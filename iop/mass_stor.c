@@ -710,9 +710,10 @@ int mass_stor_probe(int devId) {
 	 intf->bInterfaceProtocol); 
 	*/
 
-	if(	(intf->bInterfaceClass		!= USB_CLASS_MASS_STORAGE) || 
-		(intf->bInterfaceSubClass	!= USB_SUBCLASS_MASS_SCSI) ||
-		(intf->bInterfaceProtocol	!= USB_PROTOCOL_MASS_BULK_ONLY) || 
+	if(	(intf->bInterfaceClass		!= USB_CLASS_MASS_STORAGE) ||
+		(intf->bInterfaceSubClass	!= USB_SUBCLASS_MASS_SCSI  &&
+		 intf->bInterfaceSubClass	!= USB_SUBCLASS_MASS_SFF_8070I) ||
+		(intf->bInterfaceProtocol	!= USB_PROTOCOL_MASS_BULK_ONLY) ||
 		(intf->bNumEndpoints < 1))    { //the bulkIn endpoint should be enough
 		      return 0;
 	}
