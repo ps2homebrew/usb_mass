@@ -42,6 +42,7 @@
 #define MAX_FILES 16
 fs_rec  fsRec[MAX_FILES]; //file info record
 fat_dir fsDir[MAX_FILES]; //directory entry
+static int fsCounter = 0;
 
 int	mounted;	//disk mounted=1 not monuted=0 
 fat_part partTable;	//partition master record
@@ -671,7 +672,7 @@ int fat_getDirentryStartCluster(fat_bpb* bpb, unsigned char* dirName, unsigned i
 
 // start cluster should be 0 - if we want to search from root directory
 // otherwise the start cluster should be correct cluster of directory
-int fat_getFileStartCluster(fat_bpb* bpb, char* fname, unsigned int* startCluster, fat_dir* fatDir) {
+int fat_getFileStartCluster(fat_bpb* bpb, const char* fname, unsigned int* startCluster, fat_dir* fatDir) {
 	unsigned char tmpName[257];
 	int i;
 	int offset;
@@ -1017,7 +1018,7 @@ fat_bpb*  fat_getBpb() {
 /*    File IO functions                                                              */
 /*************************************************************************************/
 
-int fs_findFileSlot(int fd) {
+int fs_findFreeFileSlot(int fd) {
 	int i;
 	int result = -1;
 	for (i = 0; i < MAX_FILES; i++) {
@@ -1029,7 +1030,23 @@ int fs_findFileSlot(int fd) {
 	return result;
 }
 
-int fs_init(struct fileio_driver *driver) {
+int fs_findFileSlot(iop_file_t* file) {
+	int i;
+	int result = -1;
+	fs_rec* rec = (fs_rec*)file->privdata;
+	int fd = rec->fd;
+
+	for (i = 0; i < MAX_FILES; i++) {
+		if (fsRec[i].fd == fd) {
+			result = i;
+			break;
+		}
+	}
+	return result;
+}
+
+
+int fs_init(iop_device_t *driver) {
 	int i;
 	mounted = 0;
 	for (i = 0; i < MAX_FILES; i++) {
@@ -1038,11 +1055,10 @@ int fs_init(struct fileio_driver *driver) {
 	return 1;
 }
 
-int fs_open(int fd, char *name, int mode) {
+int fs_open(iop_file_t* fd, const char *name, int mode, ...) {
 	int index;
 	int ret;
 	unsigned int cluster;
-
 
 	XPRINTF("fs_open called: %s \n", name) ;
         //check if media mounted
@@ -1055,7 +1071,7 @@ int fs_open(int fd, char *name, int mode) {
 	if (mode != O_RDONLY) return -2;
 
 	//check if the slot is free
-	index = fs_findFileSlot(-1);
+	index = fs_findFreeFileSlot(-1);
 	if (index  < 0) return -3;
 
 	cluster = 0; //allways start from root
@@ -1065,13 +1081,17 @@ int fs_open(int fd, char *name, int mode) {
 		return -1;
 	}
 	//store fd to file slot
-	fsRec[index].fd = fd;
+	fsCounter++; 
+	fsRec[index].fd = fsCounter; //fd
 	fsRec[index].filePos = 0;
 
-	return fd;
+	//store the slot to user parameters
+	fd->privdata = &fsRec[index];
+
+	return fsCounter;
 }
 
-int fs_close(int fd) {
+int fs_close(iop_file_t* fd) {
 	int index;
 	
 	index = fs_findFileSlot(fd);
@@ -1082,7 +1102,7 @@ int fs_close(int fd) {
 	return 0;
 }
 
-int fs_lseek(int fd, int offset, int whence) {
+int fs_lseek(iop_file_t* fd, unsigned long offset, int whence) {
 	int index;
 	
 	index = fs_findFileSlot(fd);
@@ -1111,11 +1131,11 @@ int fs_lseek(int fd, int offset, int whence) {
 	return fsRec[index].filePos;
 }
 
-int fs_write(int fd, char * buffer, int size ) {
+int fs_write(iop_file_t* fd, void * buffer, int size ) {
 	return -1; //no write support
 }
 
-int fs_read(int fd, char * buffer, int size ) {
+int fs_read(iop_file_t* fd, void * buffer, int size ) {
 	int index;
 	int result;
 	
@@ -1138,6 +1158,41 @@ int fs_read(int fd, char * buffer, int size ) {
 	}
 	return result;
 }
+
+int fs_deinit (iop_device_t *fd) {
+	return fs_dummy();
+}
+int fs_format (iop_file_t *fd, ...) {
+	return fs_dummy();
+}
+int fs_ioctl  (iop_file_t *fd, unsigned long a, void *b) {
+	return fs_dummy();
+}
+int fs_remove (iop_file_t *fd, const char *name) {
+	return fs_dummy();
+}
+int fs_mkdir  (iop_file_t *fd, const char *name) {
+	return fs_dummy();
+}
+int fs_rmdir  (iop_file_t *fd, const char *name) {
+	return fs_dummy();
+}
+int fs_dopen  (iop_file_t *fd, const char *name) {
+	return fs_dummy();
+}
+int fs_dclose (iop_file_t *fd) {
+	return fs_dummy();
+}
+int fs_dread  (iop_file_t *fd, void *buffer) {
+	return fs_dummy();
+}
+int fs_getstat(iop_file_t *fd, const char *name, void *buffer) {
+	return fs_dummy();
+}
+int fs_chstat (iop_file_t *fd, const char *name, void *buffer, unsigned int a) {
+	return fs_dummy();
+}
+
 
 int fs_dummy(void) {
 	return -5;

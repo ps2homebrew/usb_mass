@@ -11,10 +11,10 @@
  */
 
 #include <tamtypes.h>
-#include <kernel.h>
+#include <thbase.h>
 #include <sifcmd.h>
 #include <sifrpc.h>
-#include <fileio.h>
+#include <ioman.h>
 #include "mass_stor.h"
 #include "fat_driver.h"
 
@@ -35,33 +35,41 @@ static SifRpcServerData_t rpc_server __attribute((aligned(64)));
 static int _rpc_buffer[512] __attribute((aligned(64)));
 static int threadId;
 
-static struct fileio_driver fs_driver;
-static void *fs_functarray[16];
+static iop_device_t fs_driver;
+static iop_device_ops_t fs_functarray;
 
 
 /* init file system driver */
 void initFsDriver() {
 	int i;
 
-	fs_driver.device = "mass";
-	fs_driver.xx1 = 16;
+	fs_driver.name = "mass";
+	fs_driver.type = 16;
 	fs_driver.version = 1;
-	fs_driver.description = "Usb mass storage driver";
-	fs_driver.function_list = fs_functarray;
+	fs_driver.desc = "Usb mass storage driver";
+	fs_driver.ops = &fs_functarray;
 
-	for (i=0;i < 16; i++) {
-		fs_functarray[i] = fs_dummy;
-	}
-	fs_functarray[ FIO_INITIALIZE ] = fs_init;
-	fs_functarray[ FIO_OPEN ] = fs_open;
-	fs_functarray[ FIO_CLOSE ] = fs_close;
-	fs_functarray[ FIO_READ ] = fs_read;
-	fs_functarray[ FIO_WRITE ] = fs_write;
-	fs_functarray[ FIO_SEEK] = fs_lseek;
+	fs_functarray.init    = fs_init;
+	fs_functarray.deinit  = fs_deinit;
+	fs_functarray.format  = fs_format;
+	fs_functarray.open    = fs_open;
+	fs_functarray.close   = fs_close;
+	fs_functarray.read    = fs_read;
+	fs_functarray.write   = fs_write;
+	fs_functarray.lseek   = fs_lseek;
+	fs_functarray.ioctl   = fs_ioctl;
+	fs_functarray.remove  = fs_remove;
+	fs_functarray.mkdir   = fs_mkdir;
+	fs_functarray.rmdir   = fs_rmdir;
+	fs_functarray.dopen   = fs_dopen;
+	fs_functarray.dclose  = fs_dclose;
+	fs_functarray.dread   = fs_dread;
+	fs_functarray.getstat = fs_getstat;
+	fs_functarray.chstat  = fs_chstat;
 
+	DelDrv("mass");
+	AddDrv(&fs_driver);
 
-	FILEIO_del( "mass");
-	FILEIO_add( &fs_driver);
 }
 
 
@@ -72,8 +80,6 @@ int _start( int argc, char **argv)
 
 
 	FlushDcache();
-	UsbInit();
-
 	initFsDriver();
 
 	/*create thread*/
@@ -101,7 +107,7 @@ void rpcMainThread(void* param)
 
 	SifInitRpc(0);
 
-	printf("usb_mass: version 0.2\n");
+	printf("usb_mass: version 0.21\n");
 
 	mass_stor_init();
 

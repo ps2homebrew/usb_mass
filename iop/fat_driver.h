@@ -1,8 +1,17 @@
 #ifndef _FAT_DRIVER_H
 #define _FAT_DRIVER_H 1
 
-#include "fat.h"
+#ifdef _PS2_
+#include <ioman.h>
+#else
+/* fake struct for non ps2 systems */
+typedef struct _iop_file {
+	void	*privdata;
+} iop_file_t;
+typedef void iop_device_t;
+#endif /* _PS2_ */
 
+#include "fat.h"
 
 typedef struct _fs_rec {
 	int fd;
@@ -15,18 +24,41 @@ typedef struct _fs_rec {
 
 int mass_stor_getStatus();
 
-int fs_init( struct fileio_driver *driver);
+/*
 int fs_open( int fd, char *name, int mode);
 int fs_lseek(int fd, int offset, int whence);
 int fs_read( int fd, char * buffer, int size );
 int fs_write( int fd, char * buffer, int size );
 int fs_close( int fd);
 int fs_dummy(void);
+*/
+
+int fs_init   (iop_device_t *driver); 
+int fs_open   (iop_file_t* , const char *name, int mode, ...);
+int fs_lseek  (iop_file_t* , unsigned long offset, int whence);
+int fs_read   (iop_file_t* , void * buffer, int size );
+int fs_write  (iop_file_t* , void * buffer, int size );
+int fs_close  (iop_file_t* );
+int fs_dummy  (void);
+
+int fs_deinit (iop_device_t *);
+int fs_format (iop_file_t *, ...);
+int fs_ioctl  (iop_file_t *, unsigned long, void *);
+int fs_remove (iop_file_t *, const char *);
+int fs_mkdir  (iop_file_t *, const char *);
+int fs_rmdir  (iop_file_t *, const char *);
+int fs_dopen  (iop_file_t *, const char *);
+int fs_dclose (iop_file_t *);
+int fs_dread  (iop_file_t *, void *);
+int fs_getstat(iop_file_t *, const char *, void *);
+int fs_chstat (iop_file_t *, const char *, void *, unsigned int);
+
+
 
 int      fat_initDriver(void);
 void     fat_closeDriver(void);
 fat_bpb* fat_getBpb(void);
-int      fat_getFileStartCluster(fat_bpb* bpb, char* fname, unsigned int* startCluster, fat_dir* fatDir);
+int      fat_getFileStartCluster(fat_bpb* bpb, const char* fname, unsigned int* startCluster, fat_dir* fatDir);
 
 
 //void fat_dumpFile(fat_bpb* bpb, int fileCluster, int size, char* fname);
