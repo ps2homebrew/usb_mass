@@ -24,15 +24,21 @@
 #include <stdlib.h>
 #include <memory.h>
 #else
+#include <thbase.h>
 #define malloc(a)       AllocSysMemory(0,(a), NULL)
 #define free(a)         FreeSysMemory((a))
 #endif
+#include <errno.h>
 
 #include "scache.h"
 #include "fat_driver.h"
 
-//#define DEBUG 1
+#ifdef WRITE_SUPPORT
+#include "fat_write.h"
+#endif
 
+
+//#define DEBUG 1
 #include "mass_debug.h"
 // Added by Hermes 
 extern unsigned Size_Sector; // store size of sector from usb mass
@@ -40,13 +46,14 @@ extern unsigned Size_Sector; // store size of sector from usb mass
 #define MEMCPY(a,b,c) memcpy((a),(b),(c))
 
 
-#define MAX_DIR_CLUSTER 256
 #define SECTOR_SIZE Size_Sector //512 modified by Hermes
 
 #define DISK_INIT(a,b)		scache_init((a), (b))
 #define DISK_CLOSE		scache_close
 //#define READ_SECTOR(a, b)	scache_readSector((a), (b))
 #define READ_SECTOR(a, b)	scache_readSector((a), (void **)&b)
+#define FLUSH_SECTORS		scache_flushSectors
+
 
 #define MAX_FILES 16
 fs_rec  fsRec[MAX_FILES]; //file info record
@@ -58,9 +65,8 @@ fat_part partTable;	//partition master record
 fat_bpb  partBpb;	//partition bios parameter block
 
 // modified by Hermes
-static unsigned int cbuf[2048/*MAX_DIR_CLUSTER*/]; //cluster index buffer
-static unsigned char* sbuf; //sector buffer
-static unsigned char tbuf[4096/*SECTOR_SIZE*/ + 4]; //temporary buffer
+unsigned char* sbuf; //sector buffer
+unsigned int cbuf[MAX_DIR_CLUSTER]; //cluster index buffer // 2048 by Hermes
 
 static int workPartition;
 
@@ -121,6 +127,16 @@ void fat_getPartitionRecord(part_raw_record* raw, part_record* rec) {
 	rec->count = getI32(raw->size);
 }
 
+/*
+
+   0x321, 0xABC
+
+     byte| byte| byte|
+   +--+--+--+--+--+--+
+   |2 |1 |C |3 |A |B |
+   +--+--+--+--+--+--+
+
+*/
 unsigned int fat_getClusterRecord12(unsigned char* buf, int type) {
 	if (type) { //1
 		return ((buf[1]<< 4) + (buf[0] >>4));
@@ -146,6 +162,7 @@ int fat_getClusterChain12(fat_bpb* bpb, unsigned int cluster, unsigned int* buf,
 	int fatSector;
 	int cont;
 	int lastFatSector;
+	unsigned char xbuf[4];
 		
 	cont = 1;
 	lastFatSector = -1;
@@ -170,19 +187,19 @@ int fat_getClusterChain12(fat_bpb* bpb, unsigned int cluster, unsigned int* buf,
 				lastFatSector = fatSector;
 
 				if (sectorSpan) {
-					tbuf[bpb->sectorSize-2] = sbuf[bpb->sectorSize - 2]; 
-					tbuf[bpb->sectorSize-1] = sbuf[bpb->sectorSize - 1]; 
+					xbuf[0] = sbuf[bpb->sectorSize - 2]; 
+					xbuf[1] = sbuf[bpb->sectorSize - 1]; 
 					ret = READ_SECTOR(bpb->partStart + bpb->resSectors + fatSector + 1, sbuf); 
 					if (ret < 0) {
 						printf("FAT driver:Read fat12 sector failed sector=%i! \n", bpb->partStart + bpb->resSectors + fatSector + 1);
 						return -1;
 					}
-					tbuf[bpb->sectorSize ] = sbuf[0]; 
-					tbuf[bpb->sectorSize +1] = sbuf[1]; 
+					xbuf[2] = sbuf[0]; 
+					xbuf[3] = sbuf[1]; 
 				}
 		}
-		if (sectorSpan) { // use tbuf as source buffer 
-			cluster = fat_getClusterRecord12(tbuf + (recordOffset % bpb->sectorSize), cluster % 2);
+		if (sectorSpan) { // use xbuf as source buffer 
+			cluster = fat_getClusterRecord12(xbuf + (recordOffset % bpb->sectorSize) - (bpb->sectorSize-2), cluster % 2);
 		} else { // use sector buffer as source buffer
 			cluster = fat_getClusterRecord12(sbuf + (recordOffset % bpb->sectorSize), cluster % 2);
 		}
@@ -303,6 +320,10 @@ int fat_getClusterChain(fat_bpb* bpb, unsigned int cluster, unsigned int* buf, i
 	return lastChainResult;
 }
 
+void fat_invalidateLastChainResult() {
+	lastChainCluster  = 0;
+}
+
 
 void fat_getPartitionTable(fat_part* part) {
 	part_raw_record* part_raw;
@@ -407,7 +428,13 @@ void fat_getPartitionBootSector(part_record* part_rec, fat_bpb* bpb) {
 	}
 }
 
-
+/*
+ returns:
+ 0 - no more dir entries
+ 1 - short name dir entry found
+ 2 - long name dir entry found
+ 3 - deleted dir entry found
+*/
 int fat_getDirentry(fat_direntry_sfn* dsfn, fat_direntry_lfn* dlfn, fat_direntry* dir ) {
 	int i, j;
 	int offset;
@@ -477,6 +504,10 @@ int fat_getDirentry(fat_direntry_sfn* dsfn, fat_direntry_lfn* dlfn, fat_direntry
 			dir->sname[i+j] = dsfn->ext[j];
 		}
 		dir->sname[i+j] = 0; //terminate
+		if (dir->name[0] == 0) { //long name desn't exit 
+			for (i =0 ; dir->sname[i] !=0; i++) dir->name[i] = dir->sname[i];
+			dir->name[i] = 0;
+		}
 		dir->attr = dsfn->attr;
 		dir->size = getI32(dsfn->size);
 		dir->cluster = getI32_2(dsfn->clusterL, dsfn->clusterH);
@@ -502,7 +533,7 @@ void fat_setFatDirChain(fat_bpb* bpb, fat_dir* fatDir) {
 	fileCluster = fatDir->chain[0].cluster;
 
 	if (fileCluster < 2) {
-		XPRINTF("early exit... \n");
+		XPRINTF("   early exit... \n");
 		return;
 	}
 
@@ -510,14 +541,13 @@ void fat_setFatDirChain(fat_bpb* bpb, fat_dir* fatDir) {
 	blockSize = fileSize / DIR_CHAIN_SIZE;
 
 	nextChain = 1;
-	clusterChainStart = 1;
+	clusterChainStart = 0;
 	j = 1;
 	fileSize = 0;
 	index = 0;
 
 	while (nextChain) {
-		chainSize = fat_getClusterChain(bpb, fileCluster, cbuf, MAX_DIR_CLUSTER, clusterChainStart);
-		clusterChainStart = 0;
+		chainSize = fat_getClusterChain(bpb, fileCluster, cbuf, MAX_DIR_CLUSTER, 1);
 		if (chainSize == 0) { //the chain is full, but more chain parts exist
 			chainSize = MAX_DIR_CLUSTER;
 			fileCluster = cbuf[MAX_DIR_CLUSTER - 1];
@@ -529,16 +559,19 @@ void fat_setFatDirChain(fat_bpb* bpb, fat_dir* fatDir) {
 #endif
 
 		//process the cluster chain (cbuf)
-		for (i = 0; i < chainSize; i++) {
+		for (i = clusterChainStart; i < chainSize; i++) {
 			fileSize += (bpb->clusterSize * bpb->sectorSize);
-			while (fileSize > (j * blockSize) && j < DIR_CHAIN_SIZE) {
+			while (fileSize >= (j * blockSize) && j < DIR_CHAIN_SIZE) {
 				fatDir->chain[j].cluster = cbuf[i];
 				fatDir->chain[j].index = index;
 				j++;
 			}
 			index++;
 		}
+		clusterChainStart = 1;
+
 	}
+	fatDir->lastCluster = cbuf[i-1];
 
 #ifdef DEBUG
 	//debug
@@ -584,7 +617,7 @@ void fat_setFatDir(fat_bpb* bpb, fat_dir* fatDir, fat_direntry_sfn* dsfn, fat_di
 	//Time: Hours, Minutes, Seconds
 	fatDir->time[0] = ((dsfn->timeWrite[1] & 0xF8) >> 3);
 	fatDir->time[1] = ((dsfn->timeWrite[1] & 0x07) << 3) + ((dsfn->timeWrite[0] & 0xE0) >> 5);
-	fatDir->time[2] = ((dsfn->timeWrite[0] & 0x1F) < 1);
+	fatDir->time[2] = ((dsfn->timeWrite[0] & 0x1F) << 1);
 
 	fatDir->chain[0].cluster = dir->cluster;
 	fatDir->chain[0].index  = 0;
@@ -593,18 +626,44 @@ void fat_setFatDir(fat_bpb* bpb, fat_dir* fatDir, fat_direntry_sfn* dsfn, fat_di
 	}
 }
 
+
+int fat_getDirentrySectorData(fat_bpb* bpb, unsigned int* startCluster, unsigned int* startSector, int* dirSector) {
+	int chainSize;
+
+	if (*startCluster == 0 && bpb->fatType < FAT32) { //Root directory
+		*startSector = bpb->rootDirStart;
+		*dirSector =  bpb->rootSize / (bpb->sectorSize / 32);
+		return 0;
+	} 
+	 //other directory or fat 32
+	if (*startCluster == 0 && bpb->fatType == FAT32) {
+		*startCluster = bpb->rootDirCluster;
+	} 
+	*startSector = fat_cluster2sector(bpb, *startCluster);
+	chainSize = fat_getClusterChain(bpb, *startCluster, cbuf, MAX_DIR_CLUSTER, 1);
+	if (chainSize > 0) {
+		*dirSector = chainSize * bpb->clusterSize;
+	} else {
+		printf("FAT driver: Error getting cluster chain! startCluster=%i \n", *startCluster);
+		return -1;
+	}
+#ifdef DEBUG
+	fat_dumpClusterChain(cbuf, chainSize, 0);
+#endif 
+	return chainSize;
+}
+
 int fat_getDirentryStartCluster(fat_bpb* bpb, unsigned char* dirName, unsigned int* startCluster, fat_dir* fatDir) {
 	fat_direntry_sfn* dsfn;
 	fat_direntry_lfn* dlfn;
 	fat_direntry dir;
 	int i, j;
 	int dirSector;
-	int startSector;
+	unsigned int startSector;
 	int cont;
 	int ret;
 	int dirPos;
 	int clusterMod;
-	int chainSize;
 
 	cont = 1;
 	XPRINTF("\n");
@@ -614,25 +673,8 @@ int fat_getDirentryStartCluster(fat_bpb* bpb, unsigned char* dirName, unsigned i
 	dir.sname[0] = 0;
 	dir.name[0] = 0;
 
-	if (*startCluster == 0 && bpb->fatType < FAT32) { //Root directory
-		startSector = bpb->rootDirStart;
-		dirSector =  bpb->rootSize / (bpb->sectorSize / 32);
-	} else { //other directory or fat 32
-		if (*startCluster == 0 && bpb->fatType == FAT32) {
-			*startCluster = bpb->rootDirCluster;
-		} 
-		startSector = fat_cluster2sector(bpb, *startCluster);
-		chainSize = fat_getClusterChain(bpb, *startCluster, cbuf, MAX_DIR_CLUSTER, 1);
-		if (chainSize > 0) {
-			dirSector = chainSize * bpb->clusterSize;
-		} else {
-			printf("FAT driver: Error getting cluster chain! startCluster=%i \n", *startCluster);
-			return -1;
-		}
-#ifdef DEBUG
-		fat_dumpClusterChain(cbuf, chainSize, 0);
-#endif /*debug*/
-	}
+	fat_getDirentrySectorData(bpb, startCluster, &startSector, &dirSector);
+
 	XPRINTF("dirCluster=%i startSector=%i (%i) dirSector=%i \n", *startCluster, startSector, startSector * Size_Sector, dirSector);
 
 	//go through first directory sector till the max number of directory sectors
@@ -641,7 +683,7 @@ int fat_getDirentryStartCluster(fat_bpb* bpb, unsigned char* dirName, unsigned i
 		ret = READ_SECTOR(startSector + i, sbuf); 
 		if (ret < 0) {
 			printf("FAT driver: read directory sector failed ! sector=%i\n", startSector + i);
-			return -1;
+			return FAT_ERROR;
 		}
 		XPRINTF("read sector ok, scanning sector for direntries...\n");
 		
@@ -665,7 +707,7 @@ int fat_getDirentryStartCluster(fat_bpb* bpb, unsigned char* dirName, unsigned i
 							if (fatDir != NULL) { //fill the directory properties
 								fat_setFatDir(bpb, fatDir, dsfn, &dir, 1);
 							}
-							*startCluster = dir.cluster;
+							*startCluster = dir.cluster; 
 							XPRINTF("direntry %s found at cluster: %i \n", dirName, dir.cluster);
 							return dir.attr; //returns file or directory attr
 						}
@@ -679,11 +721,12 @@ int fat_getDirentryStartCluster(fat_bpb* bpb, unsigned char* dirName, unsigned i
 		
 	}
 	XPRINTF("direntry %s not found! \n", dirName);
-	return -1;
+	return -EFAULT;
 }
 
 // start cluster should be 0 - if we want to search from root directory
 // otherwise the start cluster should be correct cluster of directory
+// to search directory - set fatDir as NILL
 int fat_getFileStartCluster(fat_bpb* bpb, const char* fname, unsigned int* startCluster, fat_dir* fatDir) {
 	unsigned char tmpName[257];
 	int i;
@@ -694,14 +737,6 @@ int fat_getFileStartCluster(fat_bpb* bpb, const char* fname, unsigned int* start
 	cont = 1;
 	offset = 0;
 
-/*
-	//find the : character or directory separator
-	for (i = 0; fname[i] != 0 && cont; i++) {
-		if (fname[i] == ':' || fname[i]== '/' || fname[i]=='\\') { //invalid directory name - typically the disk identifier "disk0:/"
-				cont = 0;
-		}
-	}
-*/
 	i=0;
 	if (fname[i] == '/' || fname[i] == '\\' ) {
 		i++;
@@ -712,7 +747,7 @@ int fat_getFileStartCluster(fat_bpb* bpb, const char* fname, unsigned int* start
 			tmpName[offset] = 0; //terminate string
 			ret = fat_getDirentryStartCluster(bpb, tmpName, startCluster, NULL);
 			if (ret < 0) {
-				return ret;
+				return -ENOENT;
 			}
 			offset = 0;
 		} else{
@@ -721,12 +756,14 @@ int fat_getFileStartCluster(fat_bpb* bpb, const char* fname, unsigned int* start
 		}
 	}
 	//and the final file
-	tmpName[offset] = 0; //terminate string
-	ret = fat_getDirentryStartCluster(bpb, tmpName, startCluster, fatDir);
-	if (ret < 0) {
-		return ret;
+	if (fatDir != NULL) {
+		tmpName[offset] = 0; //terminate string
+		ret = fat_getDirentryStartCluster(bpb, tmpName, startCluster, fatDir);
+		if (ret < 0) {
+			return ret;
+		}
+		XPRINTF("file's startCluster found. Name=%s, cluster=%i \n", fname, *startCluster);
 	}
-	XPRINTF("file's startCluster found. Name=%s, cluster=%i \n", fname, *startCluster);
 	return 1;
 }
 
@@ -880,13 +917,13 @@ int fat_getNextDirentry(fat_dir* fatDir) {
 	fat_direntry dir;
 	int i, j;
 	int dirSector;
-	int startSector;
+	unsigned int startSector;
 	int cont = 1;
 	int ret;
 	int dirPos;
 	int clusterMod;
 	int index;
-	int dirCluster;
+	unsigned int dirCluster;
 
 	//the getFirst function was not called
 	if (direntryCluster == 0xFFFFFFFF || fatDir == NULL) {
@@ -902,25 +939,9 @@ int fat_getNextDirentry(fat_dir* fatDir) {
 	//clear name strings
 	dir.sname[0] = 0;
 	dir.name[0] = 0;
-	if (dirCluster == 0 && bpb->fatType < FAT32) { //Root directory
-		startSector = bpb->rootDirStart;
-		dirSector =  bpb->rootSize / (bpb->sectorSize / 32);
-	} else { //other directory
-		if (dirCluster == 0 && bpb->fatType == FAT32) {
-			dirCluster = bpb->rootDirCluster;
-		} 
-		startSector = fat_cluster2sector(bpb, dirCluster);
-		dirSector = fat_getClusterChain(bpb, dirCluster, cbuf, MAX_DIR_CLUSTER, 1);
-		if (dirSector > 0) {
-#ifdef DEBUG
-			fat_dumpClusterChain(cbuf, dirSector, 0);
-#endif
-			dirSector *=  bpb->clusterSize;
-		} else {
-			printf("FAT driver: Error getting cluster chain! startCluster=%i \n", dirCluster);
-			return -3;
-		}
-	}
+
+	fat_getDirentrySectorData(bpb, &dirCluster, &startSector, &dirSector);
+	
 	XPRINTF("dirCluster=%i startSector=%i (%i) dirSector=%i \n", dirCluster, startSector, startSector * Size_Sector, dirSector);
 
 	//go through first directory sector till the max number of directory sectors
@@ -1030,6 +1051,13 @@ fat_bpb*  fat_getBpb() {
 /*    File IO functions                                                              */
 /*************************************************************************************/
 
+
+#ifdef _PS2_
+int	nameSignature;
+int	removalTime;
+int     removalResult;
+#endif /* __PS2_ */
+
 typedef struct {
    int status;
    fat_dir fatdir;
@@ -1063,6 +1091,19 @@ int fs_findFileSlot(iop_file_t* file) {
 	return result;
 }
 
+int fs_findFileSlotByName(const char* name) {
+	int i;
+	int result = -1;
+
+	for (i = 0; i < MAX_FILES; i++) {
+		if (fsRec[i].fd >= 0 && strEqual(fsDir[i].name, (unsigned char*) name) == 0) {
+			result = i;
+			break;
+		}
+	}
+	return result;
+}
+
 
 int fs_init(iop_device_t *driver) {
 	int i;
@@ -1077,34 +1118,72 @@ int fs_open(iop_file_t* fd, const char *name, int mode, ...) {
 	int index;
 	int ret;
 	unsigned int cluster;
+	char escapeNotExist;
 
-	XPRINTF("fs_open called: %s \n", name) ;
+	XPRINTF("fs_open called: %s mode=%X \n", name, mode) ;
+
         //check if media mounted
         ret = fat_mountCheck();
         if (ret < 0) {
         	return ret;
         }
-		
+
+#ifndef WRITE_SUPPORT		
 	//read only support
 	if (mode != 0 && mode != O_RDONLY) { //correct O_RDONLY  number?
 		XPRINTF("mode  (%d) != O_RDONLY	(%d) \n", mode, O_RDONLY);
-		return -2;
+		return -EROFS;
 	} 
+#endif
 
 	//check if the slot is free
 	index = fs_findFreeFileSlot(-1);
-	if (index  < 0) return -3;
+	if (index  < 0) return -EMFILE;
 
-	cluster = 0; //allways start from root
+
+#ifdef WRITE_SUPPORT
+	if (mode & O_RDWR || mode & O_WRONLY) {
+		cluster = 0; //start from root
+
+		escapeNotExist = 1;
+		if (mode & O_CREAT) {
+			XPRINTF("FAT I: O_CREAT detected!\n");
+			escapeNotExist = 0;
+		}                        
+
+		fsRec[index].sfnSector = 0;
+		fsRec[index].sfnOffset = 0;
+		ret = fat_createFile(&partBpb, name, 0, escapeNotExist, &cluster, &fsRec[index].sfnSector, &fsRec[index].sfnOffset);
+		if (ret < 0) {
+			return ret;
+		}
+		//the file already exist but mode is set to truncate
+		if (ret == 2 && (mode & O_TRUNC)) {
+			XPRINTF("FAT I: O_TRUNC detected!\n");
+			fat_truncateFile(&partBpb, cluster, fsRec[index].sfnSector, fsRec[index].sfnOffset);
+		}
+	}
+#endif /*WRITE_SUPPORT */
+
 	//find the file
+	cluster = 0; //allways start from root
 	ret = fat_getFileStartCluster(&partBpb, name, &cluster, &fsDir[index]);
 	if (ret < 0) {
-		return -1;
+		return ret;
 	}
+
 	//store fd to file slot
 	fsCounter++; 
 	fsRec[index].fd = fsCounter; //fd
+	fsRec[index].mode = mode;
 	fsRec[index].filePos = 0;
+	fsRec[index].sizeChange  = 0;
+#ifdef WRITE_SUPPORT
+	if ((mode & O_APPEND) && (mode & O_RDWR || mode & O_WRONLY)) {
+		XPRINTF("FAT I: O_APPEND detected!\n");
+		fsRec[index].filePos = fsDir[index].size;
+	}
+#endif /*WRITE_SUPPORT */
 
 	//store the slot to user parameters
 	fd->privdata = &fsRec[index];
@@ -1112,23 +1191,39 @@ int fs_open(iop_file_t* fd, const char *name, int mode, ...) {
 	return fsCounter;
 }
 
+
+
+
 int fs_close(iop_file_t* fd) {
 	int index;
-	
+
 	index = fs_findFileSlot(fd);
 	if (index < 0) {
-		return -1;
+		return -EFAULT;
 	}
 	fsRec[index].fd = -1;
+#ifdef WRITE_SUPPORT
+	if (fsRec[index].mode & O_RDWR || fsRec[index].mode & O_WRONLY) {
+		//update direntry size and time
+		if (fsRec[index].sizeChange) {
+			fat_updateSfn(fsDir[index].size, fsRec[index].sfnSector, fsRec[index].sfnOffset);
+		}
+
+		FLUSH_SECTORS();		
+	}
+#endif /*WRITE_SUPPORT */
 	return 0;
 }
+
+
+
 
 int fs_lseek(iop_file_t* fd, unsigned long offset, int whence) {
 	int index;
 	
 	index = fs_findFileSlot(fd);
 	if (index < 0) {
-		return -1;
+		return -EFAULT;
 	}
 	switch(whence) {
 		case SEEK_SET:
@@ -1153,24 +1248,56 @@ int fs_lseek(iop_file_t* fd, unsigned long offset, int whence) {
 }
 
 int fs_write(iop_file_t* fd, void * buffer, int size ) {
-	return -1; //no write support
+#ifdef WRITE_SUPPORT
+	int index;
+	int result;
+	int updateClusterIndices;
+
+
+	updateClusterIndices = 0;
+
+	index = fs_findFileSlot(fd);
+	if (index < 0) {
+		return -1;
+	}
+	if (size<=0) {
+		return 0;
+	}
+
+	result = fat_writeFile(&partBpb, &fsDir[index], &updateClusterIndices, fsRec[index].filePos, (unsigned char*) buffer, size);
+	if (result > 0) { //write succesful 
+		fsRec[index].filePos += result;
+		if (fsRec[index].filePos > fsDir[index].size) {
+			fsDir[index].size = fsRec[index].filePos;
+			fsRec[index].sizeChange = 1;
+			//if new clusters allocated - then update file cluster indices
+			if (updateClusterIndices) {
+				fat_setFatDirChain(&partBpb, &fsDir[index]);
+			}
+		}
+	}
+	return result;
+#else
+	return -EROFS; //Read Only file system
+#endif
 }
 
 int fs_read(iop_file_t* fd, void * buffer, int size ) {
 	int index;
 	int result;
+
 	
 	index = fs_findFileSlot(fd);
 	if (index < 0) {
 		return -1;
 	}
 
-	if ((fsRec[index].filePos+size) > fsDir[index].size) {
-		size = fsDir[index].size - fsRec[index].filePos;
-	}
-
 	if (size<=0) {
 		return 0;
+	}
+
+	if ((fsRec[index].filePos+size) > fsDir[index].size) {
+		size = fsDir[index].size - fsRec[index].filePos;
 	}
 
 	result = fat_readFile(&partBpb, &fsDir[index], fsRec[index].filePos, (unsigned char*) buffer, size);
@@ -1181,25 +1308,129 @@ int fs_read(iop_file_t* fd, void * buffer, int size ) {
 }
 
 
+#ifdef _PS2_
+int getNameSignature(const char *name) {
+	int ret;
+	int i;
+	ret = 0;
 
-int fs_deinit (iop_device_t *fd) {
-	return fs_dummy();
+	for (i=0; name[i] != 0 ; i++) ret += (name[i]*i/2 + name[i]);
+	return ret;
 }
-int fs_format (iop_file_t *fd, ...) {
-	return fs_dummy();
+
+int getMillis() {
+	iop_sys_clock_t clock;
+	int sec, usec;
+
+	GetSystemTime(&clock);
+	SysClock2USec(&clock, &sec, &usec);
+	return   (sec*1000) + (usec/1000);
 }
-int fs_ioctl  (iop_file_t *fd, unsigned long a, void *b) {
-	return fs_dummy();
-}
+
+#endif /* __PS2_ */
+
+
 int fs_remove (iop_file_t *fd, const char *name) {
+#ifdef WRITE_SUPPORT
+	int index;
+	int result;
+
+	if (fat_mountCheck() < 0) {
+		result = -1;
+#ifdef _PS2_
+		removalResult = result;
+#endif /* PS2 */
+ 		return result;
+	}
+	
+	index = fs_findFileSlotByName(name);
+#ifdef _PS2_
+	//store filename signature and time of removal
+	nameSignature = getNameSignature(name);
+	removalTime = getMillis();
+#endif /* __PS2_ */
+
+	//file is opened - can't delete the file
+	if (index >= 0) {
+		result = -EINVAL;
+#ifdef _PS2_
+		removalResult = result;
+#endif /* PS2 */
+		return result; 
+	}
+
+	result = fat_deleteFile(&partBpb, name, 0);
+	FLUSH_SECTORS();
+#ifdef _PS2_
+	removalTime = getMillis(); //update removal time
+	removalResult = result;
+#endif /* _PS2_ */
+
+	return result;
+#else
 	return fs_dummy();
+#endif /* write support */
 }
+
+
+
 int fs_mkdir  (iop_file_t *fd, const char *name) {
+#ifdef WRITE_SUPPORT
+	int ret;
+	int sfnOffset;
+	unsigned int sfnSector;
+	unsigned int cluster;
+#ifdef _PS2_
+	int sig, millis;
+#endif /* _PS2_ */
+
+	if (fat_mountCheck() < 0)
+ 		return -1;
+#ifdef _PS2_
+	printf("fs_mkdir: name=%s \n",name);
+	//workaround for bug that invokes fioMkdir right after fioRemove
+	sig = getNameSignature(name);
+	millis = getMillis();
+	if (sig == nameSignature && (millis - removalTime) < 1000) {
+		return removalResult; //return the original return code from fs_remove
+	}
+#endif /* _PS2_ */
+
+	ret = fat_createFile(&partBpb, name, 1, 0, &cluster,  &sfnSector, &sfnOffset);
+
+	//directory of the same name already exist
+	if (ret == 2) {
+		ret = -EEXIST;	
+	}
+	FLUSH_SECTORS();
+	return ret;
+#else
 	return fs_dummy();
+#endif /* write support */
 }
+
+
+
+// NOTE! you MUST call fioRmdir with device number in the name
+// or else this fs_rmdir function is never called.
+// example: fioRmdir("mass:/dir1");  //    <-- doesn't work (bug?)
+//          fioRmdir("mass0:/dir1"); //    <-- works fine
 int fs_rmdir  (iop_file_t *fd, const char *name) {
+#ifdef WRITE_SUPPORT
+	int ret;
+
+	if (fat_mountCheck() < 0)
+ 		return -1;
+
+	ret = fat_deleteFile(&partBpb, name, 1);
+	FLUSH_SECTORS();
+	return ret;
+#else
 	return fs_dummy();
+#endif /* write support */
 }
+
+
 int fs_dopen  (iop_file_t *fd, const char *name) {
 	int index;
 	fat_dir fatdir;
@@ -1283,6 +1514,15 @@ int fs_chstat (iop_file_t *fd, const char *name, void *buffer, unsigned int a) {
 	return fs_dummy();
 }
 
+int fs_deinit (iop_device_t *fd) {
+	return fs_dummy();
+}
+int fs_format (iop_file_t *fd, ...) {
+	return fs_dummy();
+}
+int fs_ioctl  (iop_file_t *fd, unsigned long a, void *b) {
+	return fs_dummy();
+}
 
 int fs_dummy(void) {
 	return -5;
@@ -1298,7 +1538,7 @@ void fat_dumpClusterChain(unsigned int* buf, int maxBuf, int clusterSkip) {
 	for (i=0 + clusterSkip; i < maxBuf; i++) {
 		printf(" %i,", buf[i]);
 	}
-	printf(" end\n");
+	printf(" end  (skip=%d, maxBuf=%d arrayLimit=%d) \n", clusterSkip, maxBuf, MAX_DIR_CLUSTER);
 }
 void fat_dumpPartitionTable() {
 	fat_part* part;
@@ -1480,6 +1720,6 @@ int fat_readSector(unsigned int sector, unsigned char** buf) {
 		return -1;
 	}
 	*buf = sbuf;
-	return 1;
+	return Size_Sector;
 }
 

@@ -14,6 +14,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h> //for linux compatibility
 
 int fi;		//input file 
 int fileSize;	//virtual disk size (given in bytes)
@@ -28,7 +29,7 @@ initialze virtual disk - the param is the filename
 int vdisk_init(char * param, int sectorSize) {
 	Size_Sector = sectorSize;
 	printf ("Accessing file : %s \n", param);
-	fi = open(param, O_RDONLY | O_BINARY , S_IWUSR);
+	fi = open(param, O_RDWR | O_BINARY , S_IWUSR);
 
 	if (fi >=0) {
 		fileSize = lseek(fi, 0, SEEK_END);
@@ -93,4 +94,29 @@ int vdisk_readSector4096(unsigned int sector,  void* buf) {
 	
 	lseek(fi, offset, SEEK_SET);
 	return read(fi, buf, size);
+}
+
+
+/* writes buffer of 4096 bytes */
+int vdisk_writeSector4096(unsigned int sector,  void* buf) {
+	int offset;
+	int size;
+
+	if (fi < 0) {
+		return -1;
+	}
+	//printf("write sector:%i \n", sector);
+	offset = (Size_Sector * sector);
+	size = 4096;
+
+	if ((offset + size) > fileSize) {
+		size = fileSize - offset;
+	}
+
+	if (size <= 0) {
+		return -2;
+	}
+	
+	lseek(fi, offset, SEEK_SET);
+	return write(fi, buf, size);
 }

@@ -1,14 +1,26 @@
+#ifndef __PS2SDK_1_1__
 #include <stdio.h>
+#endif
 #include <tamtypes.h>
 #include <sifrpc.h>
 #include <kernel.h>
 #include <loadfile.h>
+#include <fileio.h>
+#include <string.h>
+#include <errno.h>
+
 #include "libpad.h"
 #include "debug.h"
 
 #include "mass_rpc.h"
 
 #define ROM_PADMAN
+
+#define TWIN_PRINTF(format, args...)	\
+	printf(format, ## args) ; \
+	scr_printf(format, ## args)
+
+
 
 static char padBuf[256] __attribute__((aligned(64)));
 
@@ -22,54 +34,120 @@ void delay(int count) {
 }
 
 
+
 void listDirRecord(fat_dir_record* record) {
 	
 
 	if ((record->attr & 0x10) == 0x10) {
-		scr_printf("[*] "); //directory
-               	scr_printf("%s \n", record->name);
-
-		printf("[*] "); //directory
-               	printf("%s \n", record->name);
+		TWIN_PRINTF("[*] "); //directory
+               	TWIN_PRINTF("%s \n", record->name);
 	} else
 	if ((record->attr & 0x08) == 0x08) {
-		scr_printf(">-<"); //volume label
-               	scr_printf("%s \n", record->name);
-
-		printf(">-< "); //directory
-               	printf("%s \n", record->name);
+		TWIN_PRINTF(">-<"); //volume label
+               	TWIN_PRINTF("%s \n", record->name);
 	} else
 	{
-		scr_printf("    "); //file
-               	scr_printf("%s   size:%d \n", record->name, record->size);
-		printf("    "); //file
-               	printf("%s   size:%d \n", record->name, record->size);
-
+		TWIN_PRINTF("    "); //file
+               	TWIN_PRINTF("%s   size:%d \n", record->name, record->size);
 	}
+}
+
+void writeTest() {
+	char buf[4096];
+	int size;
+	int bufSize;
+	int readSize;
+	int writeSize;
+	int fi, fo;
+	s32 ret;
+	char iname[256];
+	char oname[256];
+
+	ret = fioMkdir("mass:/usb_mass test");
+	printf("create directory  result=%d\n", ret);
+
+	if (ret < 0 && ret != -EEXIST) {
+		return;
+	}
+
+	iname[0] = 0;
+	strcat(iname,"host:mass_example.elf" );
+
+	oname[0] = 0;
+	strcat(oname,"mass:/usb_mass test/mass_example.elf"); 
+
+	bufSize = 4096;
+
+	fi = fioOpen(iname, O_RDONLY);
+	fo = fioOpen(oname, O_WRONLY | O_TRUNC | O_CREAT ); 
+
+	if (fi >=0 && fo >=0) {
+		size = fioLseek(fi, 0, SEEK_END);
+		TWIN_PRINTF("file: %s size: %i \n", iname, size);
+		fioLseek(fi, 0, SEEK_SET);
+
+		while (size  > 0) {
+			if (size < bufSize) {
+				bufSize = size;
+			}
+			readSize =  fioRead(fi, buf, bufSize);
+			writeSize = fioWrite(fo, buf, readSize);
+			size -= writeSize;
+			if (writeSize < 1) {
+				size = -1;
+			}
+		}	
+		if (size < 0) {
+			TWIN_PRINTF("Error reading file !\n");
+		} 
+	} else {
+		if (fo < 0) {
+			TWIN_PRINTF("open file failed: %s \n", oname);
+		}
+		if (fi < 0) {
+			TWIN_PRINTF("open file failed: %s \n", iname);
+		}
+	}
+	ret = fioClose(fo);
+	TWIN_PRINTF("close file %s result=%d \n", oname, ret);
+	ret = fioClose(fi);
+	TWIN_PRINTF("close file %s result=%d \n", iname, ret);
 
 }
 
-void listDirectory() {
+void deleteTest() {
+	int ret;
+	ret = fioRemove("mass:/usb_mass test/mass_example.elf");
+	TWIN_PRINTF("remove file ret = %d\n", ret);
+
+	ret = fioMkdir("mass:/usb_mass test/newDir_1");
+	TWIN_PRINTF("make directory ret = %d\n", ret);
+
+	ret = fioMkdir("mass:/usb_mass test/newDir_2");
+	TWIN_PRINTF("make directory ret = %d\n", ret);
+
+//!NOTE! mass0 is intentional! if you use only 'mass:/' the rmdir won't work.
+	ret = fioRmdir("mass0:/usb_mass test/newDir_2");
+	TWIN_PRINTF("remove directory ret = %d\n", ret);
+}
+
+void listDirectory(char* path) {
 	int ret;
 	fat_dir_record record;
 	int counter = 0;
 	
-	scr_printf("DIRECTORY LIST \n");
-	scr_printf("-------------- \n");
-	printf("DIRECTORY LIST \n");
-	printf("-------------- \n");
-
+	TWIN_PRINTF("DIRECTORY LIST path=%s \n", path);
+	TWIN_PRINTF("------------------------------------ \n");
         /* list the root directory */
 
-	ret = usb_mass_getFirstDirentry("/", &record);
+	ret = usb_mass_getFirstDirentry(path, &record);
 	while (ret > 0 ) {
 		counter++;
 		listDirRecord(&record);
 		ret = usb_mass_getNextDirentry(&record);
 	}
 	if (counter == 0) {
-		scr_printf("no files in root directory ? \n");
-                printf("no files in root directory ? \n");
+                TWIN_PRINTF("no files in root directory ? \n");
 	}
 }
 
@@ -87,7 +165,7 @@ void loadPadModules(void)
     ret = SifLoadModule("rom0:XSIO2MAN", 0, NULL);
 #endif
     if (ret < 0) {
-        scr_printf("sifLoadModule sio failed: %d\n", ret);
+        TWIN_PRINTF("sifLoadModule sio failed: %d\n", ret);
         SleepThread();
     }    
 
@@ -97,10 +175,14 @@ void loadPadModules(void)
     ret = SifLoadModule("rom0:XPADMAN", 0, NULL);
 #endif 
     if (ret < 0) {
-        scr_printf("sifLoadModule pad failed: %d\n", ret);
+        TWIN_PRINTF("sifLoadModule pad failed: %d\n", ret);
         SleepThread();
     }
 }
+
+
+#define USBD_IRX "host:usbd.irx"
+#define USB_MASS_IRX "host:usb_mass.irx"
 
 
 void loadModules() {
@@ -108,27 +190,27 @@ void loadModules() {
 
 	loadPadModules();
 
-	ret = SifLoadModule("host0:usbd.irx", 0, NULL);
+	ret = SifLoadModule(USBD_IRX, 0, NULL);
 	if (ret < 0) {
-		printf("sifLoadModule %s failed: %d\n", "usbd", ret);
+		TWIN_PRINTF("sifLoadModule %s failed: %d\n", "usbd", ret);
 		while(1);
-	} else printf("usbd.irx ok  ret=%i\n", ret );
+	} else TWIN_PRINTF("usbd.irx ok  ret=%i\n", ret );
 
-        ret = SifLoadModule("host0:usb_mass.irx", 0, NULL);    
+        ret = SifLoadModule(USB_MASS_IRX, 0, NULL);    
 	if (ret < 0) {
-		printf("sifLoadModule %s failed: %d\n", "usb_mass", ret);
+		TWIN_PRINTF("sifLoadModule %s failed: %d\n", "usb_mass", ret);
 		while(1);
 	} else {
-		printf("usbtest.irx ok. ret=%i \n", ret);
+		TWIN_PRINTF("usb_mass.irx ok. ret=%i \n", ret);
         }
 
 	delay(1);
 
 	ret = usb_mass_bindRpc();
 	if (ret < 0 ) {
-	        printf("\nSifBindRpc failed: %d !!!!\n", ret);
+	        TWIN_PRINTF("\nSifBindRpc failed: %d !!!!\n", ret);
 	}else {
-		printf("ok\n");
+		TWIN_PRINTF("ok\n");
 	}
 
 }
@@ -168,6 +250,7 @@ int initializePad(int port, int slot)
 }
 
 
+
 int main()
 {
 	int port, slot;
@@ -179,13 +262,13 @@ int main()
 	u32 new_pad;
 
         init_scr();
-        scr_printf("USB MASS driver example\n" );
+        TWIN_PRINTF("USB MASS driver example\n" );
 
 	SifInitRpc(0);        
 
 
 	loadModules();
-	scr_printf("modules loaded ok.\n");
+	TWIN_PRINTF("modules loaded ok.\n");
 
 	padInit(0);
 
@@ -193,23 +276,27 @@ int main()
 	slot = 0; // Always zero if not using multitap
 
 	if((ret = padPortOpen(port, slot, padBuf)) == 0) {
-        	scr_printf("padOpenPort failed: %d\n", ret);
+        	TWIN_PRINTF("padOpenPort failed: %d\n", ret);
 		SleepThread();
 	}
 
 	if(!initializePad(port, slot)) {
-		scr_printf("pad initalization failed!\n");
+		TWIN_PRINTF("pad initalization failed!\n");
 		SleepThread();
 	}
 
-	scr_printf("press (X) to list directory, (O) for system info \n");
+	TWIN_PRINTF("press:  X   to list directory\n");
+	TWIN_PRINTF("        O   for system info\n");
+	TWIN_PRINTF("        []  to create directory and write a file \n");
+	TWIN_PRINTF("        /\\  to delete file and directory\n");
+
 
 	end = 0;
 	while (!end) { 
 	        ret=padGetState(port, slot);
 	        while((ret != PAD_STATE_STABLE) && (ret != PAD_STATE_FINDCTP1)) {
         		if(ret==PAD_STATE_DISCONN) {
-				scr_printf("Pad(%d, %d) is disconnected\n", port, slot);
+				TWIN_PRINTF("Pad(%d, %d) is disconnected\n", port, slot);
 			}
 			ret=padGetState(port, slot);
 		}
@@ -217,17 +304,34 @@ int main()
 	        ret = padRead(port, slot, &buttons); // port, slot, buttons
             
         	if (ret != 0) {
+#ifdef __PS2SDK_1_1__
+			paddata = 0xffff ^ ((buttons.btns[0] << 8) | 
+                                buttons.btns[1]);
+#else
 			paddata = 0xffff ^ buttons.btns;
+#endif
+
                 
 			new_pad = paddata & ~old_pad;
 			old_pad = paddata;
                 
 			if(new_pad & PAD_CROSS) {
-                       		listDirectory();
-			}
+                       		listDirectory("/");
+			} else
 			if(new_pad & PAD_CIRCLE) {
                        		usb_mass_dumpSystemInfo();
-			}
+			} else
+			if (new_pad & PAD_TRIANGLE) {
+				deleteTest();
+			} else
+			if (new_pad & PAD_SQUARE) {
+				writeTest();
+			} else
+			if (new_pad & PAD_SELECT) {
+				//usb_mass_dumpDiskContent(0, 255456+32, "host:dump.bin");
+				usb_mass_dumpDiskContent(0, 8192, "host:part.bin");
+			} else
+	
 			if(new_pad & PAD_START) {
 				end = 1;
 			}
@@ -235,5 +339,5 @@ int main()
 
 
 	}
-	scr_printf("END!");
+	TWIN_PRINTF("END!");
 }

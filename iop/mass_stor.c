@@ -37,6 +37,7 @@
 #define TAG_READ_CAPACITY       37
 #define TAG_READ		40
 #define TAG_START_STOP_UNIT	33
+#define TAG_WRITE		42
 
 #define DEVICE_DETECTED		1
 #define DEVICE_CONFIGURED	2
@@ -187,6 +188,25 @@ void cbw_scsi_read_sector(cbw_packet* packet, int lba, int sectorSize, int secto
 
 	//scsi command packet
 	packet->comData[0] = 0x28;		//read operation code
+	packet->comData[1] = 0;			//LUN/DPO/FUA/Reserved/Reldr
+	packet->comData[2] = (lba & 0xFF000000) >> 24;	//lba 1 (MSB)
+	packet->comData[3] = (lba & 0xFF0000) >> 16;	//lba 2
+	packet->comData[4] = (lba & 0xFF00) >> 8;	//lba 3
+	packet->comData[5] = (lba & 0xFF);		//lba 4 (LSB)
+	packet->comData[6] = 0;			//Reserved
+	packet->comData[7] = (sectorCount & 0xFF00) >> 8;	//Transfer length MSB
+	packet->comData[8] = (sectorCount & 0xFF);			//Transfer length LSB 
+	packet->comData[9] = 0;			//control
+}
+
+void cbw_scsi_write_sector(cbw_packet* packet, int lba, int sectorSize, int sectorCount) {
+	packet->tag = -TAG_WRITE;
+	packet->dataTransferLength = sectorSize	 * sectorCount;	
+	packet->flags = 0x00;			//write data will flow Out
+	packet->comLength = 10;			//scsi command of size 10
+
+	//scsi command packet
+	packet->comData[0] = 0x2A;		//WRITE(10) operation code
 	packet->comData[1] = 0;			//LUN/DPO/FUA/Reserved/Reldr
 	packet->comData[2] = (lba & 0xFF000000) >> 24;	//lba 1 (MSB)
 	packet->comData[3] = (lba & 0xFF0000) >> 16;	//lba 2
@@ -453,12 +473,12 @@ void usb_bulk_command(mass_dev* dev, cbw_packet* packet ) {
 }
 
 
-int usb_bulk_read(mass_dev* dev, void* buffer, int transferSize) {
+int usb_bulk_transfer(int pipe, void* buffer, int transferSize) {
 	int ret;
 	char* buf = (char*) buffer;
-	//int blockSize = dev->packetSzI;
 	int blockSize = transferSize;
 	int offset = 0;
+	int ep; //endpoint
 
 	iop_sema_t s;
 	int semh;
@@ -475,7 +495,7 @@ int usb_bulk_read(mass_dev* dev, void* buffer, int transferSize) {
 		}	
 
 		ret =  UsbBulkTransfer(
-			dev->bulkEpI,		//bulk input pipe
+			pipe,		//bulk pipe epI(Read)  epO(Write)
 			(buf + offset),		//data ptr
 			blockSize,		//data length
 			usb_callback,
@@ -502,7 +522,7 @@ int usb_bulk_read(mass_dev* dev, void* buffer, int transferSize) {
 
 
 /* helper functions */
-
+#ifdef COMPILE_DUMPS
 void dumpDevice(UsbDeviceDescriptor* data) {
 	printf("\n");
 	printf("DEVICE info\n");
@@ -588,7 +608,11 @@ void dumpReadCapacity(unsigned char * buf) {
 	printf("\n");
 }
 
+#endif /* COMPILE_DUMPS */
+
+
 /* reads one sector */
+/*
 int mass_stor_readSector1(unsigned int sector, unsigned char* buffer) {
 	cbw_packet cbw;
 	mass_dev* dev;
@@ -597,7 +621,7 @@ int mass_stor_readSector1(unsigned int sector, unsigned char* buffer) {
 
 	dev = &mass_device;
 
-	/* assume device is detected and configured - should be checked in upper levels */
+	// assume device is detected and configured - should be checked in upper levels 
 
 	initCBWPacket(&cbw);
 
@@ -616,18 +640,14 @@ int mass_stor_readSector1(unsigned int sector, unsigned char* buffer) {
 	}
 	return Size_Sector;
 }
+*/
 
-/* reads sctors group - up to 4096 bytes */
+/* reads esctor group - up to 4096 bytes */
 /* Modified by Hermes: read 4096 bytes */
-
 int mass_stor_readSector4096(unsigned int sector, unsigned char* buffer) {
 	cbw_packet cbw;
-	mass_dev* dev;
 	int sectorSize;
 	int stat;
-	int i;
-
-	dev = &mass_device;
 
 	/* assume device is detected and configured - should be checked in upper levels */
 
@@ -639,17 +659,43 @@ int mass_stor_readSector4096(unsigned int sector, unsigned char* buffer) {
 	stat = 1;
 	while (stat != 0) {
 		XPRINTF("-READ SECTOR COMMAND: %i\n", sector);
-		usb_bulk_command(dev, &cbw);
+		usb_bulk_command(&mass_device, &cbw);
 
 		XPRINTF("-READ SECTOR DATA\n");
-		stat = usb_bulk_read(dev, buffer, 4096); //Modified by Hermes 
+		stat = usb_bulk_transfer(mass_device.bulkEpI, buffer, 4096); //Modified by Hermes 
 
        	XPRINTF("-READ SECTOR STATUS\n");
-		stat = usb_bulk_manage_status(dev, -TAG_READ);
+		stat = usb_bulk_manage_status(&mass_device, -TAG_READ);
 	}
 	return 4096; //Modified by Hermes 
 }
 
+/* write sector group - up to 4096 bytes */
+int mass_stor_writeSector4096(unsigned int sector, unsigned char* buffer) {
+	cbw_packet cbw;
+	int sectorSize;
+	int stat;
+
+	/* assume device is detected and configured - should be checked in upper levels */
+
+	initCBWPacket(&cbw);
+	sectorSize = Size_Sector;
+
+	cbw_scsi_write_sector(&cbw, sector, sectorSize, 4096/sectorSize);  
+
+	stat = 1;
+	while (stat != 0) {
+		XPRINTF("-WRITE SECTOR COMMAND: %i\n", sector);
+		usb_bulk_command(&mass_device, &cbw);
+
+		XPRINTF("-WRITE SECTOR DATA\n");
+		stat = usb_bulk_transfer(mass_device.bulkEpO, buffer, 4096); 
+
+       	XPRINTF("-READ SECTOR STATUS\n");
+		stat = usb_bulk_manage_status(&mass_device, -TAG_WRITE);
+	}
+	return 4096; 
+}
 
 
 /* test that endpoint is bulk endpoint and if so, update device info */ 
@@ -849,7 +895,7 @@ int mass_stor_warmup() {
 	usb_bulk_command(dev, &cbw);
 
 	XPRINTF("-INQUIRY READ DATA\n");
-	usb_bulk_read(dev, buffer, 36);
+	usb_bulk_transfer(dev->bulkEpI, buffer, 36);
 
 	XPRINTF("-INQUIRY STATUS\n");
 	usb_bulk_manage_status(dev, -TAG_INQUIRY);
@@ -887,7 +933,7 @@ int mass_stor_warmup() {
 		usb_bulk_command(dev, &cbw);
 
 		XPRINTF("-RC DATA\n");
-		usb_bulk_read(dev, buffer, 8);
+		usb_bulk_transfer(dev->bulkEpI, buffer, 8);
 
 		XPRINTF("-RC STATUS\n");
 		stat = usb_bulk_manage_status(dev, -TAG_READ_CAPACITY);

@@ -3,6 +3,21 @@ IOP_OBJS = mass_stor.o fat_driver.o scache.o usb_mass.o imports.o
 IOP_LDFLAGS = -Wl,-s
 IOP_CFLAGS = -D_PS2_
 
+#uncomment to enable write support
+#WRITE_SUPPORT=1
+
+#uncomment to compile in dump/info functions
+#COMPILE_DUMPS=1
+
+ifdef WRITE_SUPPORT
+IOP_CFLAGS += -DWRITE_SUPPORT
+IOP_OBJS += fat_write.o
+endif
+
+ifdef COMPILE_DUMPS
+IOP_CFLAGS += -COMPILE_DUMPS
+endif
+
 all: $(IOP_BIN)
 
 clean:

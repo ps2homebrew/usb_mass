@@ -21,6 +21,10 @@
 #define FAT16 0x10
 #define FAT32 0x20
 
+
+#define FAT_MAX_PATH 1024
+#define FAT_MAX_NAME 128
+
 #define DIR_CHAIN_SIZE 10
 
 typedef struct _part_raw_record {
@@ -178,7 +182,7 @@ typedef struct _fat_direntry_lfn {
 
 typedef struct _fat_direntry {
 	unsigned char attr;		//Attributes (bits:5-Archive 4-Directory 3-Volume Label 2-System 1-Hidden 0-Read Only)
-	unsigned char name[128];		//Long name (zero terminated)
+	unsigned char name[FAT_MAX_NAME];//Long name (zero terminated)
 	unsigned char sname[13];	//Short name (zero terminated)
 	unsigned int  size;		//file size, 0 for directory
 	unsigned int  cluster;		//file start cluster 
@@ -192,16 +196,17 @@ typedef struct _fat_dir_chain_record {
 
 typedef struct _fat_dir {
 	unsigned char attr;		//attributes (bits:5-Archive 4-Directory 3-Volume Label 2-System 1-Hidden 0-Read Only)
-	unsigned char name[128];
+	unsigned char name[FAT_MAX_NAME];
 	unsigned char date[4];	//D:M:Yl:Yh
 	unsigned char time[3];  //H:M:S
 	unsigned int  size;		//file size, 0 for directory
+	unsigned int  lastCluster;
 	fat_dir_chain_record  chain[DIR_CHAIN_SIZE];  //cluser/offset cache - for seeking purpose
 } fat_dir;
 
 typedef struct _fat_dir_record { // 140 bytes
 	unsigned char attr;		//attributes (bits:5-Archive 4-Directory 3-Volume Label 2-System 1-Hidden 0-Read Only)
-	unsigned char name[128];
+	unsigned char name[FAT_MAX_NAME];
 	unsigned char date[4];	//D:M:Yl:Yh
 	unsigned char time[3];  //H:M:S
 	unsigned int  size;		//file size, 0 for directory

@@ -3,7 +3,11 @@
 
 int  scache_init(char * param, int sectorSize);
 void scache_close();
-int  scache_readSector(unsigned int sector, void** buf) ;
+int  scache_allocSector(unsigned int sector, void** buf);
+int  scache_readSector(unsigned int sector, void** buf);
+int  scache_writeSector(unsigned int sector);
+int  scache_flushSectors();
+
 void scache_getStat(unsigned int* access, unsigned int* hits);
 void scache_dumpRecords();
 #endif 

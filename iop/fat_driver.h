@@ -5,6 +5,8 @@
 #include <io_common.h>
 #include <ioman.h>
 #else
+#include <fcntl.h>
+#
 
 #define FIO_SO_IFREG		0x0010		// Regular file
 #define FIO_SO_IFDIR		0x0020		// Directory
@@ -37,12 +39,18 @@ typedef struct {
 
 typedef struct _fs_rec {
 	int fd;
-	unsigned int filePos;
+	unsigned int  filePos;
+	int           mode;	//file open mode
+	unsigned int  sfnSector; //short filename sector  - write support
+	int           sfnOffset; //short filename offset  - write support
+	int           sizeChange; //flag
 } fs_rec;
 
-#if !defined O_RDONLY
-#define O_RDONLY 0
-#endif
+
+#define FAT_ERROR           -1
+
+#define MAX_DIR_CLUSTER 512
+
 
 int mass_stor_getStatus();
 
@@ -77,11 +85,24 @@ int fs_getstat(iop_file_t *, const char *, void *);
 int fs_chstat (iop_file_t *, const char *, void *, unsigned int);
 
 
+int getI32(unsigned char* buf);
+int getI32_2(unsigned char* buf1, unsigned char* buf2);
+int getI16(unsigned char* buf);
+int strEqual(unsigned char *s1, unsigned char* s2);
+unsigned int fat_getClusterRecord12(unsigned char* buf, int type);
+unsigned int fat_cluster2sector(fat_bpb* bpb, unsigned int cluster);
 
 int      fat_initDriver(void);
 void     fat_closeDriver(void);
 fat_bpb* fat_getBpb(void);
 int      fat_getFileStartCluster(fat_bpb* bpb, const char* fname, unsigned int* startCluster, fat_dir* fatDir);
+int      fat_getDirentrySectorData(fat_bpb* bpb, unsigned int* startCluster, unsigned int* startSector, int* dirSector);
+unsigned int fat_cluster2sector(fat_bpb* bpb, unsigned int cluster);
+int      fat_getDirentry(fat_direntry_sfn* dsfn, fat_direntry_lfn* dlfn, fat_direntry* dir );
+int      fat_getClusterChain(fat_bpb* bpb, unsigned int cluster, unsigned int* buf, int bufSize, int start);
+void     fat_invalidateLastChainResult();
+void     fat_getClusterAtFilePos(fat_bpb* bpb, fat_dir* fatDir, unsigned int filePos, unsigned int* cluster, unsigned int* clusterPos);
+
 
 
 //void fat_dumpFile(fat_bpb* bpb, int fileCluster, int size, char* fname);
@@ -90,6 +111,8 @@ void fat_dumpPartitionBootSector();
 void fat_dumpPartitionTable();
 void fat_dumpClusterChain(unsigned int* buf, int maxBuf, int clusterSkip);
 int  fat_dumpSystemInfo();
+void fat_dumpSectorHex(unsigned char* buf, int bufSize);
+
 
 int fat_getFirstDirentry(char * dirName, fat_dir* fatDir);
 int fat_getNextDirentry(fat_dir* fatDir);

@@ -12,6 +12,7 @@
 #include "irx.h"
 
 /* Please keep these in alphabetical order!  */
+#include "cdvdman.h"
 #include "dmacman.h"
 #include "intrman.h"
 #include "ioman.h"

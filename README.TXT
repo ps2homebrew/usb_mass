@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
               USB_MASS - the usb mass storage driver for ps2
-               		          ver. 0.24
+               		          ver. 0.30
 -----------------------------------------------------------------------------
 
 This is the driver for ps2 that supports usb flash drives and other usb
@@ -20,19 +20,16 @@ Supported hardware:
 
 Supported features:
   - fat12, fat16, fat32. First suitable partition is used. 
-  - basic support for long filenames (128 chars in the filename)
-  - read only access
-  - directory listing
-
+  - basic support for long filenames (128 chars in the filename).
+  - read and write access. 
+    Note: write access is experimental - use at your own risks!
 
 Missing features:
   - multi partition acces
-  - write access
   - real unicode decoding and conversion for long filenames
   - only one mass device connected is currently supported
   - file system error detection - if you plug in disk with corrupted
-    filesystem then the resluts are unspecified (but as long as the driver
-    can only read data it will not modify the disk content).
+    filesystem then the resluts are unspecified 
   - and much more :-)  Driver is still in development so you may
     encounter many bugs.
 
@@ -49,7 +46,7 @@ and ready to use. There is an example in the ee directory that lists
 directory content of the disk's root directory.
 
 Performance:
-My tests shows that file transfer speed is about 500kbytes per second. 
+My tests show that file transfer speed is about 500kbytes per second. 
 If large non fragmented files are accesed (several megabytes) then the
 speed jumps at 550kbytes/s. It's not much but when compared to maximum
 usb 1.1 tranfer speed it's not that bad (max is about 700kb/s).
@@ -60,6 +57,20 @@ in ee and/or iop subdirectory to get example elf and driver irx.
 
 
 Change log:
+
+ver 0.30
+--------
+- Write support for fat12, fat16 and fat32 file systems.
+  The write support is disabled by default because I did'n run
+  extensive tests, so there is a risk of loosing your data.
+  If you want to enable it then modify the makefile inside the
+  iop directory, uncomment the 'WRITE_SUPPORT' variable and recompile.
+
+  !!!! Don't forget to BACKUP YOUR DATA first !!!!
+
+  note:  - fioRmdir requires device number in the name (use 'mass0:\xx..').
+         - fioRemove bug (calling fioMkdir afterwards) was hack-patched.
+
 
 ver 0.24
 --------

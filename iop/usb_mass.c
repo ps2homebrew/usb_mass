@@ -14,6 +14,10 @@
 #include <thbase.h>
 #include <sifrpc.h>
 #include <ioman.h>
+
+#include <cdvdman.h>
+#include <sysclib.h>
+
 #include "mass_stor.h"
 #include "fat_driver.h"
 
@@ -43,7 +47,7 @@ void initFsDriver() {
 	int i;
 
 	fs_driver.name = "mass";
-	fs_driver.type = 16;
+	fs_driver.type = IOP_DT_FS;
 	fs_driver.version = 1;
 	fs_driver.desc = "Usb mass storage driver";
 	fs_driver.ops = &fs_functarray;
@@ -106,7 +110,12 @@ void rpcMainThread(void* param)
 
 	SifInitRpc(0);
 
-	printf("usb_mass: version 0.24\n");
+	printf("usb_mass: version 0.30");
+#ifdef WRITE_SUPPORT
+	printf(" wr - experimental! Use at your own risk!\n");
+#else
+	printf(" ro\n"); //read only 
+#endif
 
 	mass_stor_init();
 
@@ -122,7 +131,6 @@ void dumpDiskContent(unsigned int startSector, unsigned int endSector, char* fna
 	unsigned int i;
 	int ret;
 	int fd;
-	unsigned char* buf;
 
 	printf("--- dump start: start sector=%i end sector=%i fd=%i--- \n", startSector, endSector, fd);
 	
@@ -136,6 +144,31 @@ void dumpDiskContent(unsigned int startSector, unsigned int endSector, char* fna
 	}
 
 }
+
+void dumpDiskContentFile(unsigned int startSector, unsigned int endSector, char* fname) {
+	unsigned int i;
+	int ret;
+	int fd;
+	unsigned char* buf;
+
+	fd = open(fname, O_RDWR | O_CREAT | O_TRUNC);
+	if (fd <= 0) {
+		printf ("dump content: file open failed ret=%d\n", ret);
+		return;
+	}
+
+	printf("--- dump start: start sector=%i end sector=%i fd=%i--- \n", startSector, endSector, fd);
+	
+	ret = 1;
+	for (i = startSector; i < endSector && ret > 0; i++) {
+		ret = fat_readSector(i, &buf);
+		//printf("sector= %d ret=%d buf=%p\n", i, ret, buf);
+		if (ret > 0) write(fd, buf, ret);
+	}
+	close (fd);
+	printf("-- dump end --- \n" );
+}
+
 
 int getFirst(void* buf) {
 	fat_dir fatDir;
@@ -172,7 +205,8 @@ void *rpcCommandHandler(u32 command, void *buffer, int size)
 			ret = getNext(((char*) buffer) + 4);
 		 	break;
 		case 3: //dumpContent
-			dumpDiskContent(buf[0], buf[1], ((char*) buffer) + 8);
+			printf("rpc called - dump disk content\n");
+			dumpDiskContentFile(buf[0], buf[1], ((char*) buffer) + 8);
 			break;
 		case 4: //dump system info
 			ret = fat_dumpSystemInfo(buf[0], buf[1]);

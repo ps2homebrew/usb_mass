@@ -14,8 +14,10 @@
 
 #include <fcntl.h>//for write output
 #include <sys/stat.h>	//for write output
+#include <unistd.h> //for linux compatibility
 
 #include "fat_driver.h"
+#include "fat_write.h"
 
 //#define DEBUG 1
 
@@ -28,6 +30,12 @@ void printHelp() {
 	printf("        -c  copy file p1 to local file p2\n");
 	printf("        -p  finds the start cluster of the file p1\n");
 	printf("        -s  open file p1, seek at p2 offset and reads 4 bytes\n");
+#ifdef WRITE_SUPPORT
+	printf("        -u  compute checksum of the p1 - SFN\n");
+	printf("        -xc  experimental - create file\n");
+	printf("        -xd  experimental - delete file\n");
+	printf("        -xw  experimental - write to file\n");
+#endif /* WRITE_SUPPORT */
 	printf("\n");
 }
 
@@ -142,7 +150,10 @@ void listDirRecord(fat_dir* record) {
 	} else
 	{
 		printf("    "); //file
-               	printf("%s   size:%d \n", record->name, record->size);
+               	printf("%s   size:%d ", record->name, record->size);
+		printf(" date:%d/%d/%d time: %d:%d:%d \n", 
+			record->date[2] + record->date[3]*256, record->date[1], record->date[0],
+			record->time[0], record->time[1], record->time[2]);
 	}
 
 }
@@ -166,8 +177,174 @@ void dumpDirectory(char * directory) {
 	if (counter == 0) {
                 printf("no files in directory ? \n");
 	}
+}
+
+
+#ifdef WRITE_SUPPORT
+
+/*
+convert short name from condensed format ("Abcd.txt") to direntry format ("ABCD    TXT");
+*/
+
+
+void convertShortName(unsigned char* src, unsigned char* dst) {
+	int i,j;
+	
+	//fill dst with spaces
+	for (i = 0; i < 11; i++) dst[i] = 0x20;
+
+	for (i=0; src[i] != '.' && src[i] !=0 && i < 9; i++) {
+		dst[i] = toUpperChar(src[i]);
+	}
+	if (src[i] == '.') {
+		i++;
+		j=0;	
+		for (; src[i] !=0 && j < 3; i++, j++) {
+			dst[8+j] = toUpperChar(src[i]);
+		}
+	}	
+}
+
+
+void computeChecksum(char* fileName) {
+	unsigned char result;
+	unsigned char sname[12];
+	int i;
+
+	sname[11] = 0;
+	convertShortName((unsigned char*)fileName, sname);	
+	result = 0;
+	for (i = 0; i < 11; i++) {
+		result = (0x80 * (0x01 & result)) + (result >> 1);  //ROR 1
+		result += sname[i];
+	}
+	printf("checksum of %s ->  '%s'  = %d, 0x%02X \n", fileName, sname, result, result);
+}
+
+void createFile(char* param, char* par2) {
+	char directory;
+	unsigned int sfnSector;
+	unsigned int cluster;
+	int sfnOffset;
+
+	fat_bpb* bpb = fat_getBpb();
+	directory = 0;
+	if (par2 != NULL && par2[0] != 0) directory = 1;
+	fat_createFile(bpb, param, directory, 0, &cluster,  &sfnSector, &sfnOffset);
+}
+
+void deleteFile(char* param, char* par2) {
+	char directory;
+	int ret;
+
+	fat_bpb* bpb = fat_getBpb();
+	directory = 0;
+	if (par2 != NULL && par2[0] != 0) directory = 1;
+	ret = fat_deleteFile(bpb, param, directory);
+	printf("result = %d \n", ret);
+}
+
+/*
+void writeTest(char* fname, char* extraName) {
+	char buf[4096];
+	int size;
+	int bufSize;
+	int readSize;
+	int fd, fi;
+	int i, max;
+	unsigned int* buf2;
+	iop_file_t file;
+
+	buf2 = (unsigned int*) buf;
+
+	bufSize = 4096;
+	buf[0] = 'A';
+	buf[1] = 'b';
+	buf[2] = 'c';
+	buf[3] = 'd';
+
+
+	fd = fs_open(&file, fname, O_RDWR | O_TRUNC| O_CREAT);
+	printf("open ret=%d \n", fd);
+	//fi = open(extraName, O_RDONLY, S_IWUSR | S_IRUSR); 
+	if (fd >=0 ) {
+		size = fs_write(&file, buf, 4);
+		printf("write ret=%d \n", size);
+	}
+
+	i = fs_close(&file);
+	printf("close ret=%d \n", i);
+
 
 }
+*/
+
+void writeFile(char* fname, char* iname) {
+	char buf[4096];
+	int size;
+	int bufSize;
+	int readSize;
+	int writeSize;
+	int fd, fi;
+	int i, max;
+	unsigned int* buf2;
+	iop_file_t file;
+
+	if (fname == NULL || iname == NULL) {
+		printf("E: not enough parameters!\n");
+		return;
+	}
+
+	buf2 = (unsigned int*) buf;
+
+	bufSize = 4096;
+
+	fd = fs_open(&file, fname, O_RDWR | O_CREAT | O_TRUNC );
+	fi = open(iname, O_RDONLY | O_BINARY , S_IWUSR | S_IRUSR); 
+	if (fd >=0 && fi >=0) {
+		size = lseek(fi, 0, SEEK_END);
+		printf("file: %s size: %i \n", iname, size);
+		lseek(fi, 0, SEEK_SET);
+
+		while (size  > 0) {
+			if (size < bufSize) {
+				bufSize = size;
+			}
+			//readSize =  fs_read(&file, buf, bufSize);
+			readSize =  read(fi, buf, bufSize);
+			writeSize = fs_write(&file, buf, readSize);
+
+			size -= writeSize;
+			if (writeSize < 1) {
+				size = -1;
+			} else {
+				//write(fo, buf, readSize);
+			}
+
+		}	
+		if (size < 0) {
+			printf("Error writing file ! ret=%d\n", writeSize);
+		} 
+		fs_close(&file);
+	} else {
+		if (fi >= 0) {
+			printf("open file failed: %s \n", fname);
+		} else {
+			printf("open file failed: %s \n", iname);
+		}
+	}
+
+
+
+}
+
+void testX(char* param1) {
+
+	fat_test();
+
+}
+
+#endif /* WRITE_SUPPORT */
 
 /*****************************************************************/
 int main(int argc, char** argv)
@@ -233,7 +410,19 @@ int main(int argc, char** argv)
 			case 'c':	//dump file
 						copyFile(argv[2], argv[3]);
 						break;
-
+#ifdef WRITE_SUPPORT
+			case 'u':	//compute checksum
+						computeChecksum(argv[2]);
+						break;
+			case 'x':	//test functions
+						switch(argv[1][2]) {
+						case 'c': createFile(argv[2], argv[3]);	break;
+						case 'd': deleteFile(argv[2], argv[3]);	break;
+						case 'w': writeFile (argv[2], argv[3]);	break;
+						case 'x': testX(argv[2]);
+						}
+						break;
+#endif /* WRITE_SUPPORT */
 		}
 	} 
 
