@@ -8,6 +8,7 @@
  * See the file LICENSE included with this distribution for licensing terms.
  */
 
+#include <stdio.h>
 //#include <kernel.h>
 #include <sifrpc.h>
 #include "mass_rpc.h"

@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <tamtypes.h>
 #include <sifrpc.h>
 #include <kernel.h>
@@ -216,8 +217,7 @@ int main()
 	        ret = padRead(port, slot, &buttons); // port, slot, buttons
             
         	if (ret != 0) {
-			paddata = 0xffff ^ ((buttons.btns[0] << 8) | 
-                                buttons.btns[1]);
+			paddata = 0xffff ^ buttons.btns;
                 
 			new_pad = paddata & ~old_pad;
 			old_pad = paddata;
