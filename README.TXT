@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
               USB_MASS - the usb mass storage driver for ps2
-               		          ver. 0.22
+               		          ver. 0.23
 -----------------------------------------------------------------------------
 
 This is the driver for ps2 that supports usb flash drives and other usb
@@ -60,6 +60,10 @@ in ee and/or iop subdirectory to get example elf and driver irx.
 
 Change log:
 
+ver 0.23
+--------
+- dopen dclose dread getstat implementation by raipsu
+
 ver 0.22
 --------
 Hermes Notes:
@@ -83,8 +87,8 @@ ver 0.1
 
 
 Credits: (alphabetical order :)
-Jonathan Fox (FAT system guide), Hermes, mrbrown, ole, oobles, Gustvo Scotti, TyRaNiD,
-and the ps2dev scene.
+Jonathan Fox (FAT system guide), Hermes, mrbrown, ole, oobles, 
+Gustvo Scotti, raipsu, TyRaNiD, and the ps2dev scene.
 
 Thanks:
 to all folks who helped me with testing.
