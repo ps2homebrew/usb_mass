@@ -15,4 +15,5 @@ int usb_mass_getFirstDirentry(char* path, fat_dir_record* record);
 int usb_mass_getNextDirentry(fat_dir_record* record);
 int usb_mass_dumpSystemInfo();
 int usb_mass_dumpDiskContent(unsigned int startSector, unsigned int sectorCount, char* fname);
+int usb_mass_overwriteDiskContent(unsigned int startSector, unsigned int sectorCount, char* fname);
 #endif /* _MASS_RPC_H */

@@ -1403,7 +1403,7 @@ int fs_mkdir  (iop_file_t *fd, const char *name) {
 	if (fat_mountCheck() < 0)
  		return -1;
 #ifdef _PS2_
-	printf("fs_mkdir: name=%s \n",name);
+	XPRINTF("fs_mkdir: name=%s \n",name);
 	//workaround for bug that invokes fioMkdir right after fioRemove
 	sig = getNameSignature(name);
 	millis = getMillis();
@@ -1420,7 +1420,7 @@ int fs_mkdir  (iop_file_t *fd, const char *name) {
 	}
 	FLUSH_SECTORS();
 	return ret;
-#else
+#else  /* write support */
 	return fs_dummy();
 #endif /* write support */
 }

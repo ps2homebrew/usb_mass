@@ -98,7 +98,7 @@ void writeTest() {
 			}
 		}	
 		if (size < 0) {
-			TWIN_PRINTF("Error reading file !\n");
+			TWIN_PRINTF("Error writting file readSize=%d writeSize=%d!\n", readSize, writeSize);
 		} 
 	} else {
 		if (fo < 0) {
@@ -129,6 +129,85 @@ void deleteTest() {
 //!NOTE! mass0 is intentional! if you use only 'mass:/' the rmdir won't work.
 	ret = fioRmdir("mass0:/usb_mass test/newDir_2");
 	TWIN_PRINTF("remove directory ret = %d\n", ret);
+}
+
+
+int seekReadWriteTestTest() {
+	int i,j;
+	int fo;
+	int ret;
+	int pos;
+	unsigned char oname[256];
+	unsigned char tbuf[620];
+	unsigned char rbuf[256];
+
+	//generate tbuf
+	for (i = 0; i < 620; i++) tbuf[i] = i % 256;
+
+	oname[0] = 0;
+	strcat(oname,"mass:/usb_mass test/seekTest.elf"); 
+
+
+	fo = fioOpen(oname, O_RDWR | O_TRUNC | O_CREAT ); 
+	if (fo < 0) {
+		TWIN_PRINTF("open file failed: %s \n", oname);
+		return 0;
+	}
+
+	for (i = 0; i < 100; i++) {
+		ret = fioWrite(fo, tbuf + i, 513);
+		if (ret != 513) {
+			return -1;		
+		}
+	}
+	TWIN_PRINTF("test 1 passed \n");
+
+	fioLseek(fo, 0, SEEK_SET);
+	for (i  = 0; i < 198; i++) {
+		ret = fioRead(fo, rbuf, 256);
+		if (ret != 256) {
+			return -2;		
+		}
+		for (j = 0; j < 256; j++)  
+			if (j != rbuf[j]) return -3;	
+		
+	}
+	TWIN_PRINTF("test 2 and 3 passed \n");
+
+	pos = fioLseek(fo, 0, SEEK_CUR);
+	if (pos != 198*256) return -4;
+	TWIN_PRINTF("test 4 passed \n");
+
+	pos = fioLseek(fo, 0, SEEK_END);
+	if (pos !=  100 *513) return -5;
+	TWIN_PRINTF("test 5 passed \n");
+
+
+	fioLseek(fo, 100*256, SEEK_SET);
+	for (i = 0; i < 200; i++) {
+		ret = fioWrite(fo, tbuf, 256);
+		if (ret != 256) {
+			return -6;		
+		}
+	}
+	TWIN_PRINTF("test 6 passed \n");
+	
+	pos = fioLseek(fo, 0, SEEK_CUR);
+	if (pos != 300*256) return -7;
+	TWIN_PRINTF("test 7 passed \n");
+
+	fioLseek(fo, 0, SEEK_SET);
+	for (i  = 0; i < 300; i++) {
+		ret = fioRead(fo, rbuf, 256);
+		if (ret != 256) {
+			return -8;		
+		}
+		for (j = 0; j < 256; j++)  
+			if (j != rbuf[j]) return -9;	
+	}
+	TWIN_PRINTF("done OK! \n");
+	fioClose(fo);	
+
 }
 
 void listDirectory(char* path) {
@@ -326,10 +405,15 @@ int main()
 			} else
 			if (new_pad & PAD_SQUARE) {
 				writeTest();
+				ret = seekReadWriteTestTest();
+				if (ret < 0) {
+					TWIN_PRINTF("seek test failed step=%d\n", -ret);
+				}
+
 			} else
 			if (new_pad & PAD_SELECT) {
-				//usb_mass_dumpDiskContent(0, 255456+32, "host:dump.bin");
-				usb_mass_dumpDiskContent(0, 8192, "host:part.bin");
+				usb_mass_dumpDiskContent(0, 256, "host:part.bin");
+				//usb_mass_overwriteDiskContent(0, 1052321, "host:disk1.bin");
 			} else
 	
 			if(new_pad & PAD_START) {

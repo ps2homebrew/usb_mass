@@ -44,7 +44,7 @@
 
 
 //number of cache slots (1 slot = memory block of 4096 bytes)
-#define CACHE_SIZE 6
+#define CACHE_SIZE 32
 
 //when the flushCounter reaches FLUSH_TRIGGER then flushSectors is called
 #define FLUSH_TRIGGER 16
@@ -67,6 +67,8 @@ unsigned int cacheHits;
 unsigned int writeFlag;
 unsigned int flushCounter;
 
+unsigned int cacheDumpCounter = 0;
+
 int dummy_init(unsigned char * p1, int i) {
 	return 1;
 
@@ -85,13 +87,17 @@ void initRecords() {
 
 void scache_dumpRecords() {
 	int i;
-
+	int ratio;
+/*
 	printf("CACHE RECORDS\n");
 	printf("-------------\n");
 	for (i = 0; i < CACHE_SIZE; i++) {
 		printf("%02i) sector=%8i  tax=%8i \n", i, rec[i].sector, rec[i].tax);
 	}
-	printf("access=%i  hits=%i \n", cacheAccess, cacheHits);
+*/
+	
+	ratio = (cacheHits * 100) / cacheAccess;
+	printf("access=%i  hits=%i ratio=%d.%d\n", cacheAccess, cacheHits, ratio/100, ratio % 100);
 }
 
 /* search cache records for the sector number stored in cache
@@ -196,6 +202,14 @@ int scache_readSector(unsigned int sector, void** buf) {
 	int index; //index is given in single sectors not octal sectors
 	int ret;
 	unsigned int allignedSector;
+
+/*
+	cacheDumpCounter++;
+	if (cacheDumpCounter > 1000) {
+		cacheDumpCounter = 0;
+		scache_dumpRecords();
+	}
+*/
 
 	XPRINTF("cache: readSector = %i \n", sector);
 	cacheAccess ++;

@@ -63,6 +63,8 @@ typedef struct _mass_dev
 	int devId;		//device id
 	int configId;	//configuration id
 	int status;
+	int interfaceNumber;	//interface number
+	int interfaceAlt;	//interface alternate setting
 } mass_dev;
 
 typedef struct _read_info {
@@ -240,7 +242,6 @@ void usb_callback(int resultCode, int bytes, void *arg) {
 	returnCode = resultCode;
 	returnSize = bytes;
 	XPRINTF("Usb - callback: res %d, bytes %d, arg %p \n", resultCode, bytes, arg);
-	//printf("Usb - callback: res %d, bytes %d, arg %p \n", resultCode, bytes, arg);
 	SignalSema(semh);
 }
 
@@ -829,6 +830,9 @@ int mass_stor_connect(int devId) {
 	config = (UsbConfigDescriptor*)UsbGetDeviceStaticDescriptor(devId, device, USB_DT_CONFIG);
 
 	interface = (UsbInterfaceDescriptor *) ((char *) config + config->bLength); /* Get first interface */
+	// store interface numbers
+	dev->interfaceNumber = interface->bInterfaceNumber;
+	dev->interfaceAlt    = interface->bAlternateSetting;
 
 	epCount = interface->bNumEndpoints;
 	endpoint = (UsbEndpointDescriptor*) UsbGetDeviceStaticDescriptor(devId, NULL, USB_DT_ENDPOINT);
@@ -937,7 +941,7 @@ int mass_stor_warmup() {
 		printf("!Error: device not ready!\n");
 		return -1;
 	} 
-
+/*
 	//send start stop command
 	cbw_scsi_start_stop_unit(&cbw);
 	XPRINTF("-START COMMAND\n");
@@ -954,7 +958,7 @@ int mass_stor_warmup() {
 
 	XPRINTF("-TUR STATUS\n");
 	usb_bulk_manage_status(dev, -TAG_TEST_UNIT_READY);
-
+*/
 	//send read capacity command
 	cbw_scsi_read_capacity(&cbw); //prepare scsi command block
 
@@ -967,8 +971,17 @@ int mass_stor_warmup() {
 		XPRINTF("-RC DATA\n");
 		usb_bulk_transfer(dev->bulkEpI, buffer, 8);
 
-		XPRINTF("-RC STATUS\n");
-		stat = usb_bulk_manage_status(dev, -TAG_READ_CAPACITY);
+		//HACK HACK HACK !!!
+		//according to usb doc we should allways 
+		//attempt to read the CSW packet. But in some cases
+		//reading of CSW packet just freeze ps2....:-(
+		if (returnCode == 4) {
+			usb_bulk_reset(dev, 1);
+		} else {
+
+			XPRINTF("-RC STATUS\n");
+			stat = usb_bulk_manage_status(dev, -TAG_READ_CAPACITY);
+		}
 		retryCount --;
 	}
 	if (stat != 0) {
@@ -996,8 +1009,9 @@ int mass_stor_getStatus() {
 	if (!(mass_device.status & DEVICE_CONFIGURED)) {
 		//usb_bulk_reset(&mass_device, 1);
 		set_configuration(&mass_device, mass_device.configId);
-		//printf("set configuration return code=%d \n", returnCode);
-		//for (i = 0; i < 0xFFFFF; i++) asm("nop\nnop\nnop\nnop");	
+		//maybe this wait is not necessary, but who knows....
+		for (i = 0; i < 0xFFFFF; i++) asm("nop\nnop\nnop\nnop");	
+		set_interface(&mass_device, mass_device.interfaceNumber, mass_device.interfaceAlt);
 		mass_device.status += DEVICE_CONFIGURED;
 		i= mass_stor_warmup();
 		if (i < 0) {
@@ -1021,5 +1035,8 @@ int mass_stor_init() {
 
 	ret = UsbRegisterDriver(&driver);
 	XPRINTF("mass_stor: registerDriver=%i \n", ret);
+	if (ret < 0) {
+		printf("usb_mass: register driver failed! ret=%d\n", ret);
+	}
 }
 

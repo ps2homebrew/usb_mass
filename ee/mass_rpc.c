@@ -109,3 +109,22 @@ int usb_mass_dumpDiskContent(unsigned int startSector, unsigned int sectorCount,
 	return *ret;
 }
 
+int usb_mass_overwriteDiskContent(unsigned int startSector, unsigned int sectorCount, char* fname) {
+        int* ret;
+        unsigned int * nums;
+        int i;
+
+	for (i = 0; fname[i] != 0; i++) {
+		rpcBuffer[i+8] = fname[i];
+        }
+        rpcBuffer[i+8] = 0;
+
+       	nums = (unsigned int*) rpcBuffer;
+       	nums[0] = startSector;
+       	nums[1] = sectorCount;
+
+	SifCallRpc(&client,5,0,(void*)(&rpcBuffer[0]), 256,(void*)(&rpcBuffer[0]),256,0,0);
+
+	ret = (int*) rpcBuffer;
+	return *ret;
+}

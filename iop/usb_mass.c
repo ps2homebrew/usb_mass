@@ -169,6 +169,46 @@ void dumpDiskContentFile(unsigned int startSector, unsigned int endSector, char*
 	printf("-- dump end --- \n" );
 }
 
+void overwriteDiskContentFile(unsigned int startSector, unsigned int endSector, char* fname) {
+#ifdef WRITE_SUPPORT
+
+	unsigned int i;
+	int ret;
+	int fd;
+	unsigned char* buf;
+	unsigned char* rbuf;
+	int index;
+
+	rbuf = (unsigned char*) _rpc_buffer;
+
+	fd = open(fname, O_RDONLY);
+	if (fd <= 0) {
+		printf ("write content: file open failed ret=%d\n", ret);
+		return;
+	}
+
+	printf("--- write start: start sector=%i end sector=%i fd=%i--- \n", startSector, endSector, fd);
+	
+	ret = 1;
+	for (i = startSector; i < endSector && ret > 0; i++) {
+		index = i % 4;
+		if (index == 0) {
+			ret = read(fd, rbuf, 2048);
+			
+		}
+		ret = fat_allocSector(i, &buf);
+		memcpy(buf, rbuf + index * 512, 512);
+		fat_writeSector(i);
+		if (i % 1024 == 0) 
+			printf("sector= %d ret=%d buf=%p\n", i, ret, buf);
+	}
+	if (ret) fat_flushSectors();
+	close (fd);
+	printf("-- dump end --- \n" );
+/* WRITE_SUPPORT */
+#endif 
+}
+
 
 int getFirst(void* buf) {
 	fat_dir fatDir;
@@ -210,6 +250,10 @@ void *rpcCommandHandler(u32 command, void *buffer, int size)
 			break;
 		case 4: //dump system info
 			ret = fat_dumpSystemInfo(buf[0], buf[1]);
+			break;
+		case 5: //overwrite disk 
+			printf("rpc called - overwrite disk content\n");
+			overwriteDiskContentFile(buf[0], buf[1], ((char*) buffer) + 8);
 			break;
 	}
 	buf[0] = ret; //store return code

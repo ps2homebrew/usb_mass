@@ -2136,6 +2136,7 @@ int fat_writeFile(fat_bpb* bpb, fat_dir* fatDir, int* updateClusterIndices, unsi
 
 
 void fat_test() {
+/*
 	fat_bpb* bpb;
 	bpb = fat_getBpb();
 //	fat_modifyClusterChain(bpb, 30, 0x123);
@@ -2144,4 +2145,32 @@ void fat_test() {
 	fat_appendClusterChain(bpb, 31,32);
 	fat_appendClusterChain(bpb, 32,33);
 	fat_appendClusterChain(bpb, 33,34);
+*/
+}
+
+int fat_allocSector(unsigned int sector, unsigned char** buf) {
+	int ret;
+
+	ret = ALLOC_SECTOR(sector, sbuf); 
+	if (ret < 0) {
+		printf("Alloc sector failed ! sector=%i\n", sector);
+		return -1;
+	}
+	*buf = sbuf;
+	return Size_Sector;
+}
+
+int fat_writeSector(unsigned int sector) {
+	int ret;
+
+	ret = WRITE_SECTOR(sector); 
+	if (ret < 0) {
+		printf("Write sector failed ! sector=%i\n", sector);
+		return -1;
+	}
+	return Size_Sector;
+}
+
+int fat_flushSectors(void) {
+	FLUSH_SECTORS();
 }
