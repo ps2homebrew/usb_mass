@@ -73,6 +73,9 @@ If large non fragmented files are accesed (several megabytes) then the
 speed jumps at 550kbytes/s. It's not much but when compared to maximum
 usb 1.1 tranfer speed it's not that bad (max is about 700kb/s).
 
+Compilation:
+Copy the content to ps2sdk/samples/usb_mass directory and run make 
+in ee and/or iop subdirectory to get example elf and driver irx.
 
 Credits:
 oobles, mrbrown, TyRaNiD, Gustvo Scotti, Jonathan Fox (FAT system guide)
