@@ -12,11 +12,11 @@
  */
 
 #include <tamtypes.h>
-#include <kernel.h>
 #include <sifcmd.h>
 #include <sifrpc.h>
 #include <thsemap.h>
 #include <usbd.h>
+#include <usbd_macro.h>
 #include "mass_stor.h"
 //#define DEBUG 1
 #include "mass_debug.h"

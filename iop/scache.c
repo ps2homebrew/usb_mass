@@ -11,7 +11,7 @@
 
 
 #ifdef _PS2_
-#include <kernel.h>
+#include <tamtypes.h>
 #define malloc(a)	AllocSysMemory(0,(a), NULL)
 #define free(a)		FreeSysMemory((a))
 #define MEMCPY(a,b,c) memcpy((a),(b),(c))
@@ -39,8 +39,6 @@
 
 //#define DEBUG 1
 #include "mass_debug.h"
-
-
 
 
 //size in quadsectors (ie in 2048 bytes)

@@ -41,23 +41,24 @@ void testFile(char*  fname) {
 	int i, max;
 	unsigned int csum = 0;
 	unsigned int* buf2;
+	iop_file_t file;
 
 	buf2 = (unsigned int*) buf;
 
 	bufSize = 4096;
 
-	fd = fs_open(1, fname, O_RDONLY);
+	fd = fs_open(&file, fname, O_RDONLY);
 
 	if (fd >=0) {
-		size = fs_lseek(fd, 0, SEEK_END);
+		size = fs_lseek(&file, 0, SEEK_END);
 		printf("size: %i \n", size);
-		fs_lseek(fd, 0, SEEK_SET);
+		fs_lseek(&file, 0, SEEK_SET);
 
 		while (size  > 0) {
 			if (size < bufSize) {
 				bufSize = size;
 			}
-			readSize =  fs_read(fd, buf, bufSize);
+			readSize =  fs_read(&file, buf, bufSize);
 			max = readSize / 4;
 			for (i = 0; i < max; i++) {
 				csum = csum ^ buf2[i];
@@ -73,7 +74,7 @@ void testFile(char*  fname) {
 		} else {
 			printf("File read ok. Control sum=%08X\n", csum);
 		}
-		fs_close(fd);
+		fs_close(&file);
 	} else {
 
 		printf("open file failed: %s \n", fname);
@@ -88,25 +89,25 @@ void copyFile(char*  fname, char* oname) {
 	int readSize;
 	int fd, fo;
 	int i, max;
-	unsigned int csum = 0;
 	unsigned int* buf2;
+	iop_file_t file;
 
 	buf2 = (unsigned int*) buf;
 
 	bufSize = 4096;
 
-	fd = fs_open(1, fname, O_RDONLY);
+	fd = fs_open(&file, fname, O_RDONLY);
 	fo = open(oname, O_RDWR | O_TRUNC | O_CREAT | O_BINARY, S_IWUSR | S_IRUSR); 
 	if (fd >=0 && fo >=0) {
-		size = fs_lseek(fd, 0, SEEK_END);
-		printf("size: %i \n", size);
-		fs_lseek(fd, 0, SEEK_SET);
+		size = fs_lseek(&file, 0, SEEK_END);
+		printf("file: %s size: %i \n", fname, size);
+		fs_lseek(&file, 0, SEEK_SET);
 
 		while (size  > 0) {
 			if (size < bufSize) {
 				bufSize = size;
 			}
-			readSize =  fs_read(fd, buf, bufSize);
+			readSize =  fs_read(&file, buf, bufSize);
 			size -= readSize;
 			if (readSize < 1) {
 				size = -1;
@@ -117,10 +118,8 @@ void copyFile(char*  fname, char* oname) {
 		}	
 		if (size < 0) {
 			printf("Error reading file !\n");
-		} else {
-			printf("File read ok. Control sum=%08X\n", csum);
-		}
-		fs_close(fd);
+		} 
+		fs_close(&file);
 	} else {
 		if (fo >= 0) {
 			printf("open file failed: %s \n", fname);
@@ -180,6 +179,7 @@ int main(int argc, char** argv)
 	int i;
 	unsigned char data[4];
 	fat_bpb* bpb;
+	iop_file_t file;
 
 	fat_dir  fatDir; //complete directory entry
 
@@ -213,16 +213,16 @@ int main(int argc, char** argv)
 						break;
 			case 's':	//seek at file offset, then read 4 bytes
 						data[0] = data[1] = data[2] = data[3] = 0;
-						fd = fs_open(1, argv[2], O_RDONLY);
+						fd = fs_open(&file, argv[2], O_RDONLY);
 						if (fd < 0) {
 							printf ("error opening file! rc=%i\n", fd);
 							break;
 						} else {
 							printf("fs_open ok, fd=%i \n", fd);
 						}
-						fs_lseek(fd, atoi(argv[3]), SEEK_SET);
-						ret = fs_read(fd, (char*)data, 4);
-						fs_close(fd);
+						fs_lseek(&file, atoi(argv[3]), SEEK_SET);
+						ret = fs_read(&file, (char*)data, 4);
+						fs_close(&file);
 						printf("seek bytes: %02X %02X %02X %02X \n",  data[0], data[1], data[2], data[3]);
 						testFile(argv[2]);
 						break;
