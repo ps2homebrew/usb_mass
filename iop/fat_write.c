@@ -1661,7 +1661,7 @@ int fat_modifyDirSpace(fat_bpb* bpb, unsigned char* lname, char directory, char 
             1 - true  - directory space is empty or contains deleted entries
            -X - error
 */
-int checkDirspaceEmpty(fat_bpb* bpb, unsigned int startCluster) {
+int checkDirspaceEmpty(fat_bpb* bpb, unsigned int startCluster, unsigned char* entry) {
 	int ret;
 	int i;
 	unsigned char sname[12]; //short name 8+3 + terminator
@@ -1671,9 +1671,6 @@ int checkDirspaceEmpty(fat_bpb* bpb, unsigned int startCluster) {
 
 	unsigned int retSector;
 	int retOffset;
-	
-	unsigned char entry[DIRENTRY_COUNT]; 
-
 
 	XPRINTF("I: checkDirspaceEmpty  directory cluster=%d \n", startCluster);
 	if (startCluster < 2) {  // do not check root directory!
@@ -1736,6 +1733,7 @@ int fat_clearDirSpace(fat_bpb* bpb, unsigned char* lname, char directory, unsign
 		XPRINTF("E: direntry not found!\n");
 		return -ENOENT;
 	}
+	XPRINTF("clear dir space: dir found at  cluster=%d \n ", *startCluster);
 
 	//Check wether any file or directory exist in te target directory space.
 	//We should not delete the directory if files/directories exist
@@ -1744,12 +1742,14 @@ int fat_clearDirSpace(fat_bpb* bpb, unsigned char* lname, char directory, unsign
 	if (directory) {
 		//check wether sub-directory is empty
 		//startCluster now points to subdirectory start cluster
-		ret = checkDirspaceEmpty(bpb, *startCluster);
+		ret = checkDirspaceEmpty(bpb, *startCluster, entry);
 		if (ret == 0) { //directorty contains some files 
 			return -ENOTEMPTY;
 		}
 		//read the direntry info again, because we lost it during subdir check
 		*startCluster = dirCluster;
+		memset(entry, 0, DIRENTRY_COUNT);
+
 		ret = fat_fillDirentryInfo(bpb, lname, sname, directory, startCluster, entry, DIRENTRY_COUNT, &sfnSector, &sfnOffset);
 		if (ret != 0) {
 			XPRINTF("E: direntry not found!\n");

@@ -745,7 +745,6 @@ int fat_getFileStartCluster(fat_bpb* bpb, const char* fname, unsigned int* start
 	for ( ; fname[i] !=0; i++) {
 		if (fname[i] == '/' || fname[i] == '\\') { //directory separator
 			tmpName[offset] = 0; //terminate string
-			printf("parse name=%s \n", tmpName);
 			ret = fat_getDirentryStartCluster(bpb, tmpName, startCluster, fatDir);
 			if (ret < 0) {
 				return -ENOENT;
@@ -900,10 +899,10 @@ int fat_mountCheck() {
 		if ((mediaStatus & 0x04) == 4) { 
 			mounted = 0;
 		}
-	    if (mounted) { /* and is mounted */
-        	return 1;
-        }
-        ret = fat_initDriver();
+		if (mounted) { /* and is mounted */
+        		return 1;
+        	}
+	        ret = fat_initDriver();
 		return ret;
 	}
 	if (mounted) { /* fs mounted but media is not ready - force unmount */

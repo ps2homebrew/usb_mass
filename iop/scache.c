@@ -143,7 +143,7 @@ int getIndexWrite(unsigned int sector) {
 	
 	//this sector is dirty - we need to flush it first
 	if (rec[index].writeDirty) {
-		printf("scache: getIndexWrite: sector is dirty : %d   index=%d \n", rec[index].sector, index);
+		XPRINTF("scache: getIndexWrite: sector is dirty : %d   index=%d \n", rec[index].sector, index);
 		ret = WRITE_SECTOR_4096(rec[index].sector, sectorBuf + (index * 4096));
 		rec[index].writeDirty = 0;
 		//TODO - error handling
