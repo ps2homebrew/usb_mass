@@ -1086,7 +1086,10 @@ int fs_open(iop_file_t* fd, const char *name, int mode, ...) {
         }
 		
 	//read only support
-	if (mode != O_RDONLY) return -2;
+	if (mode != 0 && mode != O_RDONLY) { //correct O_RDONLY  number?
+		XPRINTF("mode  (%d) != O_RDONLY	(%d) \n", mode, O_RDONLY);
+		return -2;
+	} 
 
 	//check if the slot is free
 	index = fs_findFreeFileSlot(-1);

@@ -178,7 +178,7 @@ typedef struct _fat_direntry_lfn {
 
 typedef struct _fat_direntry {
 	unsigned char attr;		//Attributes (bits:5-Archive 4-Directory 3-Volume Label 2-System 1-Hidden 0-Read Only)
-	unsigned char name[96];		//Long name (zero terminated)
+	unsigned char name[128];		//Long name (zero terminated)
 	unsigned char sname[13];	//Short name (zero terminated)
 	unsigned int  size;		//file size, 0 for directory
 	unsigned int  cluster;		//file start cluster 

@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
               USB_MASS - the usb mass storage driver for ps2
-               		          ver. 0.23
+               		          ver. 0.24
 -----------------------------------------------------------------------------
 
 This is the driver for ps2 that supports usb flash drives and other usb
@@ -16,6 +16,7 @@ Supported hardware:
     * SWEEX (FX300010) 6 In 1 multi pannel - first CF slot working
     * ViPowER usb to ide cable (VP-9208 + VP-9054V enclosure) - working
     * Ne Way MP3 player 256MB
+    * MSI Mega Stick 511 (128MB, MP3 player) - working
 
 Supported features:
   - fat12, fat16, fat32. First suitable partition is used. 
@@ -59,6 +60,12 @@ in ee and/or iop subdirectory to get example elf and driver irx.
 
 
 Change log:
+
+ver 0.24
+--------
+- bugfix - scsi inquiry command asked more data than required 
+- removed device reset during configuration of the device (caused freeze for
+  some devices, other devices were able to survive the reset )
 
 ver 0.23
 --------

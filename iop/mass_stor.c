@@ -101,6 +101,7 @@ int retSize = 0;
 
 static int returnCode;
 static int returnSize;
+static int residue;
 
 mass_dev mass_device;		//current device 
 
@@ -139,7 +140,7 @@ void cbw_scsi_inquiry(cbw_packet* packet) {
 	packet->comData[1] = 0;			//lun/reserved
 	packet->comData[2] = 0;			//page code
 	packet->comData[3] = 0;			//reserved
-	packet->comData[4] = 96;		//inquiry reply length
+	packet->comData[4] = 36;		//inquiry reply length
 	packet->comData[5] = 0;			//reserved/flag/link/
 }
 
@@ -295,10 +296,10 @@ void usb_bulk_clear_halt(mass_dev* dev, int direction) {
 	s.option = 0;
 	s.attr = 0;
 
-	if (direction = 0) {
-		endpoint = dev->bulkEpOAddr;
-	} else {
+	if (direction == 0) {
 		endpoint = dev->bulkEpIAddr;
+	} else {
+		endpoint = dev->bulkEpOAddr;
 	}
 
 	semh = CreateSema(&s);
@@ -379,7 +380,7 @@ int usb_bulk_status(mass_dev* dev, csw_packet* csw, int tag) {
 
 	initCSWPacket(csw);
 	csw->tag = tag;
-	csw->dataResidue = 0;
+	csw->dataResidue = residue;
 	csw->status = 0;
 	ret =  UsbBulkTransfer(
 		dev->bulkEpI,		//bulk input pipe
@@ -417,7 +418,7 @@ int usb_bulk_manage_status(mass_dev* dev, int tag) {
 	/* stalled or phase error */
 	if (ret != 0) {
 		XPRINTF("...call reset recovery ...\n");
-		usb_bulk_reset(dev, 1);	/* Perform reset recovery */
+		usb_bulk_reset(dev, 3);	/* Perform reset recovery */
 	}
 
 	return ret;
@@ -488,6 +489,7 @@ int usb_bulk_read(mass_dev* dev, void* buffer, int transferSize) {
 			WaitSema(semh);
 			XPRINTF(" retCode=%i retSize=%i \n", returnCode, returnSize);
 			if (returnCode > 0) {
+				residue = blockSize;
 				break;
 			}
 			offset += returnSize;
@@ -913,7 +915,7 @@ int mass_stor_getStatus() {
 		return -1;
 	}
 	if (!(mass_device.status & DEVICE_CONFIGURED)) {
-		usb_bulk_reset(&mass_device, 1);
+		//usb_bulk_reset(&mass_device, 1);
 		set_configuration(&mass_device, mass_device.configId);
 		mass_device.status += DEVICE_CONFIGURED;
 		mass_stor_warmup();
