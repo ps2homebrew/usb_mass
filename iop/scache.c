@@ -8,6 +8,8 @@
  * See the file LICENSE included with this distribution for licensing terms.
  */
 
+
+
 #ifdef _PS2_
 #include <kernel.h>
 #define malloc(a)	AllocSysMemory(0,(a), NULL)
@@ -36,7 +38,7 @@
 #endif
 
 //#define DEBUG 1
-#include "debug.h"
+#include "mass_debug.h"
 
 
 

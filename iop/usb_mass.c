@@ -19,7 +19,7 @@
 #include "fat_driver.h"
 
 //#define DEBUG 1
-#include "debug.h"
+#include "mass_debug.h"
 
 
 #define BIND_RPC_ID 0x500C0F1
@@ -135,7 +135,6 @@ void dumpDiskContent(unsigned int startSector, unsigned int endSector, char* fna
 int getFirst(void* buf) {
 	fat_dir fatDir;
 	int ret;
-	
 	ret = fat_getFirstDirentry((char*) buf, &fatDir);
 	if (ret > 0) {
 		memcpy(buf, &fatDir, sizeof(fat_dir_record)); //copy only important things

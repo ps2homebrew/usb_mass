@@ -19,7 +19,7 @@
 #include <usbd.h>
 #include "mass_stor.h"
 //#define DEBUG 1
-#include "debug.h"
+#include "mass_debug.h"
 
 #define USB_SUBCLASS_MASS_RBC		0x01
 #define USB_SUBCLASS_MASS_ATAPI		0x02

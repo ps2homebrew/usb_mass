@@ -4,8 +4,9 @@ IOP_LDFLAGS = -Wl,-s
 IOP_CFLAGS = -D_PS2_
 
 all: $(IOP_BIN)
+
 clean:
 	rm -f *.elf *.o *.a *.irx
 
-include ../../../Makefile.pref
-include ../../../Makefile.iopglobal
+include $(PS2SDK)/samples/Makefile.pref
+include $(PS2SDK)/samples/Makefile.iopglobal

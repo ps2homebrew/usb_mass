@@ -3,6 +3,7 @@
 #include <kernel.h>
 #include <loadfile.h>
 #include "libpad.h"
+#include "debug.h"
 
 #include "mass_rpc.h"
 
