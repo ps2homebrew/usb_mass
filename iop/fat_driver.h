@@ -2,13 +2,35 @@
 #define _FAT_DRIVER_H 1
 
 #ifdef _PS2_
+#include <io_common.h>
 #include <ioman.h>
 #else
+
+#define FIO_SO_IFREG		0x0010		// Regular file
+#define FIO_SO_IFDIR		0x0020		// Directory
 /* fake struct for non ps2 systems */
 typedef struct _iop_file {
 	void	*privdata;
 } iop_file_t;
 typedef void iop_device_t;
+
+typedef struct {
+	unsigned int mode;
+	unsigned int attr;
+	unsigned int size;
+	unsigned char ctime[8];
+	unsigned char atime[8];
+	unsigned char mtime[8];
+	unsigned int hisize;
+} fio_stat_t;
+
+typedef struct {
+	fio_stat_t stat;
+	char name[256];
+	unsigned int unknown;
+} fio_dirent_t;
+
+
 #endif /* _PS2_ */
 
 #include "fat.h"
@@ -51,6 +73,7 @@ int fs_dopen  (iop_file_t *, const char *);
 int fs_dclose (iop_file_t *);
 int fs_dread  (iop_file_t *, void *);
 int fs_getstat(iop_file_t *, const char *, void *);
+
 int fs_chstat (iop_file_t *, const char *, void *, unsigned int);
 
 

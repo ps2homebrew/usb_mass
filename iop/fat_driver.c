@@ -3,6 +3,7 @@
  *
  * (C) 2004, Marek Olejnik (ole00@post.cz)
  * (C) 2004  Hermes (support for sector sizes from 512 to 4096 bytes)
+ * (C) 2004  raipsu (fs_dopen, fs_dclose, fs_dread, fs_getstat implementation)
  *
  * FAT filesystem layer
  *
@@ -16,10 +17,15 @@
 */
 
 #include <stdio.h>
+//#include <malloc.h>
+#include <sys/stat.h>
 
 #ifndef _PS2_
 #include <stdlib.h>
 #include <memory.h>
+#else
+#define malloc(a)       AllocSysMemory(0,(a), NULL)
+#define free(a)         FreeSysMemory((a))
 #endif
 
 #include "scache.h"
@@ -1024,6 +1030,12 @@ fat_bpb*  fat_getBpb() {
 /*    File IO functions                                                              */
 /*************************************************************************************/
 
+typedef struct {
+   int status;
+   fat_dir fatdir;
+} D_PRIVATE;
+
+
 int fs_findFreeFileSlot(int fd) {
 	int i;
 	int result = -1;
@@ -1165,6 +1177,8 @@ int fs_read(iop_file_t* fd, void * buffer, int size ) {
 	return result;
 }
 
+
+
 int fs_deinit (iop_device_t *fd) {
 	return fs_dummy();
 }
@@ -1184,17 +1198,84 @@ int fs_rmdir  (iop_file_t *fd, const char *name) {
 	return fs_dummy();
 }
 int fs_dopen  (iop_file_t *fd, const char *name) {
-	return fs_dummy();
+	int index;
+	fat_dir fatdir;
+
+	fsCounter++;
+ 
+	if (fat_mountCheck() < 0) {
+		return -1;
+	}
+ 	printf ("dopen: '%s'\n", name);
+ 
+	if (fat_getFirstDirentry((char*)name, &fatdir)<1) {
+		return -1;
+	}
+ 
+	fd->privdata = (void*)malloc(sizeof(D_PRIVATE));
+	memset(fd->privdata, 0, sizeof(D_PRIVATE));
+	memcpy(&(((D_PRIVATE*)fd->privdata)->fatdir), &fatdir, sizeof(fatdir));
+
+ 	return fsCounter;
+
 }
 int fs_dclose (iop_file_t *fd) {
-	return fs_dummy();
+ 	free(fd->privdata);
+ 	return 0;
 }
-int fs_dread  (iop_file_t *fd, void *buffer) {
-	return fs_dummy();
+int fs_dread  (iop_file_t *fd, void* data) {
+	int notgood;
+	fio_dirent_t *buffer = (fio_dirent_t *)data;
+	do {
+		if (((D_PRIVATE*)fd->privdata)->status)
+ 			return -1;
+ 
+		notgood = 0;
+
+		memset(buffer, 0, sizeof(fio_dirent_t));
+		if ((((D_PRIVATE*)fd->privdata)->fatdir).attr & 0x08) {	 /* volume name */
+			notgood = 1;
+		}
+		if ((((D_PRIVATE*)fd->privdata)->fatdir).attr & 0x10) {
+			buffer->stat.mode |= FIO_SO_IFDIR;
+	        } else {
+			buffer->stat.mode |= FIO_SO_IFREG;
+		}
+
+		buffer->stat.size = (((D_PRIVATE*)fd->privdata)->fatdir).size;
+ 
+		strcpy(buffer->name, (const char*)(((D_PRIVATE*)fd->privdata)->fatdir).name);
+ 
+		if (fat_getNextDirentry(&(((D_PRIVATE*)fd->privdata)->fatdir))<1)
+			((D_PRIVATE*)fd->privdata)->status = 1;	/* no more entries */
+	} while (notgood);
+ 
+ 	return 1;
 }
-int fs_getstat(iop_file_t *fd, const char *name, void *buffer) {
-	return fs_dummy();
+
+int fs_getstat(iop_file_t *fd, const char *name, void* data) {
+	int ret;
+	unsigned int cluster = 0;
+	fio_stat_t *stat = (fio_stat_t *)data;
+	fat_dir fatdir;
+ 
+	if (fat_mountCheck() < 0)
+ 		return -1;
+
+	ret = fat_getFileStartCluster(&partBpb, name, &cluster, &fatdir);
+	if (ret < 0) {
+		return -1;
+	}
+ 
+	memset(stat, 0, sizeof(fio_stat_t));
+	stat->size = fatdir.size;
+	if (fatdir.attr & 10)
+		stat->mode |= FIO_SO_IFDIR;
+	else
+		stat->mode |= FIO_SO_IFREG;
+	return 0;
 }
+
 int fs_chstat (iop_file_t *fd, const char *name, void *buffer, unsigned int a) {
 	return fs_dummy();
 }
