@@ -106,7 +106,7 @@ void rpcMainThread(void* param)
 
 	SifInitRpc(0);
 
-	printf("usb_mass: version 0.21\n");
+	printf("usb_mass: version 0.22\n");
 
 	mass_stor_init();
 

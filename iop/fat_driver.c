@@ -2,6 +2,7 @@
  * fat_driver.c - USB Mass storage driver for PS2
  *
  * (C) 2004, Marek Olejnik (ole00@post.cz)
+ * (C) 2004  Hermes (support for sector sizes from 512 to 4096 bytes)
  *
  * FAT filesystem layer
  *
@@ -27,12 +28,14 @@
 //#define DEBUG 1
 
 #include "mass_debug.h"
+// Added by Hermes 
+extern unsigned Size_Sector; // store size of sector from usb mass
 
 #define MEMCPY(a,b,c) memcpy((a),(b),(c))
 
 
 #define MAX_DIR_CLUSTER 256
-#define SECTOR_SIZE 512
+#define SECTOR_SIZE Size_Sector //512 modified by Hermes
 
 #define DISK_INIT(a,b)		scache_init((a), (b))
 #define DISK_CLOSE		scache_close
@@ -48,9 +51,10 @@ int	mounted;	//disk mounted=1 not monuted=0
 fat_part partTable;	//partition master record
 fat_bpb  partBpb;	//partition bios parameter block
 
-static unsigned int cbuf[MAX_DIR_CLUSTER]; //cluster index buffer
+// modified by Hermes
+static unsigned int cbuf[2048/*MAX_DIR_CLUSTER*/]; //cluster index buffer
 static unsigned char* sbuf; //sector buffer
-static unsigned char tbuf[SECTOR_SIZE + 4]; //temporary buffer
+static unsigned char tbuf[4096/*SECTOR_SIZE*/ + 4]; //temporary buffer
 
 static int workPartition;
 
@@ -89,7 +93,9 @@ int strEqual(unsigned char *s1, unsigned char* s2) {
 }
 
 unsigned int fat_cluster2sector1216(fat_bpb* bpb, unsigned int cluster) {
-	return  bpb->rootDirStart + (bpb->rootSize / 16)  + (bpb->clusterSize * (cluster-2));
+	//return /* bpb->rootDirStart + (bpb->rootSize / 16)  + (bpb->clusterSize * (cluster-2));
+	return  bpb->rootDirStart + (bpb->rootSize / (bpb->sectorSize>>5))+ (bpb->clusterSize * (cluster-2));
+                           //modified by Hermes    ^ this work :)
 }
 unsigned int fat_cluster2sector32(fat_bpb* bpb, unsigned int cluster) {
 	return  bpb->rootDirStart + (bpb->clusterSize * (cluster-2));
@@ -621,7 +627,7 @@ int fat_getDirentryStartCluster(fat_bpb* bpb, unsigned char* dirName, unsigned i
 		fat_dumpClusterChain(cbuf, chainSize, 0);
 #endif /*debug*/
 	}
-	XPRINTF("dirCluster=%i startSector=%i (%i) dirSector=%i \n", *startCluster, startSector, startSector * 512, dirSector);
+	XPRINTF("dirCluster=%i startSector=%i (%i) dirSector=%i \n", *startCluster, startSector, startSector * Size_Sector, dirSector);
 
 	//go through first directory sector till the max number of directory sectors
 	//or stop when no more direntries detected
@@ -909,7 +915,7 @@ int fat_getNextDirentry(fat_dir* fatDir) {
 			return -3;
 		}
 	}
-	XPRINTF("dirCluster=%i startSector=%i (%i) dirSector=%i \n", dirCluster, startSector, startSector * 512, dirSector);
+	XPRINTF("dirCluster=%i startSector=%i (%i) dirSector=%i \n", dirCluster, startSector, startSector * Size_Sector, dirSector);
 
 	//go through first directory sector till the max number of directory sectors
 	//or stop when no more direntries detected
@@ -987,7 +993,7 @@ int fat_initDriver() {
 	direntryCluster = 0xFFFFFFFF;
 	direntryIndex = 0;
 
-	ret = DISK_INIT("disk1.bin", 512);
+	ret = DISK_INIT("disk1.bin", Size_Sector); // modified by Hermes
 	if (ret < 0) {
 		printf ("fat_driver: disk init failed \n" );
 		return ret;

@@ -4,6 +4,7 @@
  * (C) 2002, David Ryan ( oobles@hotmail.com )
  * (C) 2003, TyRaNiD <tiraniddo@hotmail.com>
  * (C) 2004, Marek Olejnik (ole00@post.cz)
+ * (C) 2004  Hermes (support for sector sizes from 512 to 4096 bytes)
  *
  * This module handles the setup and manipulation of USB mass storage devices
  * on the PS2
@@ -40,6 +41,12 @@
 #define DEVICE_DETECTED		1
 #define DEVICE_CONFIGURED	2
 #define DEVICE_DISCONNECTED 4
+
+// Added by Hermes 
+int getBI32(unsigned char* buf) {
+	return (buf[3]  + (buf[2] <<8) + (buf[1] << 16) + (buf[0] << 24));
+}
+unsigned Size_Sector=512; // store size of sector from usb mass
 
 
 typedef struct _mass_dev
@@ -579,11 +586,10 @@ void dumpReadCapacity(unsigned char * buf) {
 	printf("\n");
 }
 
-/* reads one sctor */
+/* reads one sector */
 int mass_stor_readSector1(unsigned int sector, unsigned char* buffer) {
 	cbw_packet cbw;
 	mass_dev* dev;
-	int sectorSize;
 	int stat;
 	int i;
 
@@ -592,9 +598,8 @@ int mass_stor_readSector1(unsigned int sector, unsigned char* buffer) {
 	/* assume device is detected and configured - should be checked in upper levels */
 
 	initCBWPacket(&cbw);
-	sectorSize = 512;
 
-	cbw_scsi_read_sector(&cbw, sector, sectorSize, 1);
+	cbw_scsi_read_sector(&cbw, sector, Size_Sector, 1);
 
 	stat = 1;
 	while (stat != 0) {
@@ -602,16 +607,18 @@ int mass_stor_readSector1(unsigned int sector, unsigned char* buffer) {
 		usb_bulk_command(dev, &cbw);
 
 		XPRINTF("-READ SECTOR DATA\n");
-		stat = usb_bulk_read(dev, buffer, sectorSize);
+		stat = usb_bulk_read(dev, buffer, Size_Sector); //change Hermes
 
        	XPRINTF("-READ SECTOR STATUS\n");
 		stat = usb_bulk_manage_status(dev, -TAG_READ);
 	}
-	return sectorSize;
+	return Size_Sector;
 }
 
-/* reads eight sctors */
-int mass_stor_readSector8(unsigned int sector, unsigned char* buffer) {
+/* reads sctors group - up to 4096 bytes */
+/* Modified by Hermes: read 4096 bytes */
+
+int mass_stor_readSector4096(unsigned int sector, unsigned char* buffer) {
 	cbw_packet cbw;
 	mass_dev* dev;
 	int sectorSize;
@@ -623,9 +630,9 @@ int mass_stor_readSector8(unsigned int sector, unsigned char* buffer) {
 	/* assume device is detected and configured - should be checked in upper levels */
 
 	initCBWPacket(&cbw);
-	sectorSize = 512;
+	sectorSize = Size_Sector;
 
-	cbw_scsi_read_sector(&cbw, sector, sectorSize, 8);
+	cbw_scsi_read_sector(&cbw, sector, sectorSize, 4096/sectorSize);  // Added by Hermes
 
 	stat = 1;
 	while (stat != 0) {
@@ -633,12 +640,12 @@ int mass_stor_readSector8(unsigned int sector, unsigned char* buffer) {
 		usb_bulk_command(dev, &cbw);
 
 		XPRINTF("-READ SECTOR DATA\n");
-		stat = usb_bulk_read(dev, buffer, sectorSize << 3);
+		stat = usb_bulk_read(dev, buffer, 4096); //Modified by Hermes 
 
        	XPRINTF("-READ SECTOR STATUS\n");
 		stat = usb_bulk_manage_status(dev, -TAG_READ);
 	}
-	return sectorSize;
+	return 4096; //Modified by Hermes 
 }
 
 
@@ -888,6 +895,10 @@ int mass_stor_warmup() {
 		printf("mass_stor: Warning: warmup (read capacity) failed! \n");
 		return 1;
 	}
+	// Added by Hermes
+	Size_Sector=getBI32(&buffer[4]);
+	printf("PHYSICAL SECTOR SIZE: 0x%x\n",Size_Sector);
+
 #ifdef DEBUG
 	dumpReadCapacity(buffer);	
 #endif

@@ -2,6 +2,7 @@
  * scache.c - USB Mass storage driver for PS2
  *
  * (C) 2004, Marek Olejnik (ole00@post.cz)
+ * (C) 2004  Hermes (support for sector sizes from 512 to 4096 bytes)
  *
  * Sector cache 
  *
@@ -14,20 +15,20 @@
 #include <tamtypes.h>
 #define malloc(a)	AllocSysMemory(0,(a), NULL)
 #define free(a)		FreeSysMemory((a))
-#define MEMCPY(a,b,c) memcpy((a),(b),(c))
 
 #include "mass_stor.h"
 
 #define DISK_INIT(a,b)		dummy_init((a),(b))
 #define DISK_CLOSE		
-//allways read 8 sectors instead of 1 (the rest 7 sectors are precached)
-#define READ_SECTOR(a, b)	mass_stor_readSector8((a), (b)) 
+// Modified Hermes
+//always read 4096 bytes from sector (the rest bytes is stored in the cache)  
+#define READ_SECTOR_4096(a, b)	mass_stor_readSector4096((a), (b)) 
+#define READ_SECTOR(a, b)	mass_stor_readSector1((a), (b)) 
 
 #else
 #include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
-#define MEMCPY(a,b,c) memcpy((a),(b),(c))
 
 #include "vdisk.h"
 
@@ -64,18 +65,6 @@ int dummy_init(unsigned char * p1, int i) {
 
 }
 
-void ps2_memcpy(void* dst, void* src, int size) {
-	unsigned char* d = (unsigned char*) dst;
-	unsigned char* s = (unsigned char*) src;
-	XPRINTF("ps2_memcpy dst=%p src=%p size=%d \n", dst, src, size);
-	while (size--) {
-		*d = *s;
-		d++;
-		s++;
-	}
-	XPRINTF("memcpy done.\n");
-}
-
 void initRecords() {
 	int i;
 	for (i = 0; i < CACHE_SIZE; i++) {
@@ -89,9 +78,10 @@ void initRecords() {
 int getIndexRead(unsigned int sector) {
 	int i;
 	int index =-1;
+        int indexLimit=4096/sectorSize;  //added Hermes
 
 	for (i = 0; i < CACHE_SIZE; i++) {
-		if (sector >= rec[i].sector && sector < (rec[i].sector + 8)) {
+		if (sector >= rec[i].sector && sector < (rec[i].sector + indexLimit)) {
 			if (rec[i].tax < 0) rec[i].tax = 0;
 			rec[i].tax +=2;
 			index = i;
@@ -101,7 +91,7 @@ int getIndexRead(unsigned int sector) {
 	if (index < 0) 
 		return index;
 	else 
-		return ((index<<3) + (sector - rec[index].sector));
+		return ((index * indexLimit) + (sector - rec[index].sector));
 }
 
 /* select the best record where to store new sector */
@@ -109,6 +99,7 @@ int getIndexWrite(unsigned int sector) {
 	int i;
 	int minTax = 0x0FFFFFFF;
 	int index = 0;
+        int indexLimit=4096/sectorSize;  //added Hermes
 
 	for (i = 0; i < CACHE_SIZE; i++) {
 		if (rec[i].tax < minTax) {
@@ -118,7 +109,7 @@ int getIndexWrite(unsigned int sector) {
 	}
 	rec[index].tax ++;
 	rec[index].sector = sector;
-	return index << 3;
+	return index * indexLimit;
 }
 
 
@@ -130,9 +121,8 @@ int scache_readSector(unsigned int sector, void** buf) {
 	cacheAccess ++;
 	index = getIndexRead(sector);
 	XPRINTF("cache: indexRead=%i \n", index);
-	if (index > 0) { //sector found in cache
+	if (index >= 0) { //sector found in cache
 		cacheHits ++;
-		//MEMCPY(buf, sbuf + (index * sectorSize), sectorSize);
 		*buf = sbuf + (index * sectorSize);
 		XPRINTF("cache: hit and done reading sector \n");
 		return sectorSize;
@@ -140,11 +130,10 @@ int scache_readSector(unsigned int sector, void** buf) {
 
 	index = getIndexWrite(sector);
 	XPRINTF("cache: indexWrite=%i \n", index);
-	ret = READ_SECTOR(sector, sbuf + (index * sectorSize));
+	ret = READ_SECTOR_4096(sector, sbuf + (index * sectorSize));
 	if (ret < 0) {
 		return ret;
 	}
-	//MEMCPY(buf, sbuf + (index * sectorSize), sectorSize);
 	*buf = sbuf + (index * sectorSize);
 	XPRINTF("cache: done reading physical sector \n");
 	return sectorSize;
@@ -152,16 +141,18 @@ int scache_readSector(unsigned int sector, void** buf) {
 
 
 int scache_init(char * param, int sectSize) {
+	//added by Hermes
 	sectorSize = sectSize;
 
 	if (sbuf == NULL) {
 		XPRINTF("scache init! \n");
-		sbuf = (unsigned char*) malloc(sectorSize * CACHE_SIZE * 8 ); //allocate octal sectors
+		XPRINTF("sectorSize: 0x%x\n",sectorSize);
+		sbuf = (unsigned char*) malloc(4096 * CACHE_SIZE ); //allocate 4096 bytes per 1 cache record
 		if (sbuf == NULL) {
-			XPRINTF("Sector cache: can't alloate memory of size:%d \n", sectorSize * CACHE_SIZE * 8);		
+			XPRINTF("Sector cache: can't alloate memory of size:%d \n", 4096 * CACHE_SIZE);		
 			return -1;
 		}
-		XPRINTF("Sector cache: alocated memory at:%p of size:%d \n", sbuf,  sectorSize * CACHE_SIZE * 8);
+		XPRINTF("Sector cache: alocated memory at:%p of size:%d \n", sbuf, 4096 * CACHE_SIZE);
 	} else {
 		XPRINTF("scache flush! \n");
 	}
@@ -191,6 +182,7 @@ void scache_close() {
 
 	if (sbuf != NULL) {
 		free(sbuf);
+		sbuf = NULL;
 	}
 	//DISK_CLOSE();
 }
