@@ -16,8 +16,9 @@
 #include <sys/stat.h>
 
 int fi;		//input file 
-int secSize;	//sector size
 int fileSize;	//virtual disk size (given in bytes)
+
+unsigned Size_Sector=512; // 
 
 
 /*
@@ -25,7 +26,7 @@ initialze virtual disk - the param is the filename
 */
 
 int vdisk_init(char * param, int sectorSize) {
-	secSize = sectorSize;
+	Size_Sector = sectorSize;
 	printf ("Accessing file : %s \n", param);
 	fi = open(param, O_RDONLY | O_BINARY , S_IWUSR);
 
@@ -55,10 +56,14 @@ int vdisk_readSector(unsigned int sector,  void* buf) {
 		return -1;
 	}
 	//printf("read sector:%i \n", sector);
-	offset = (secSize * sector);
-	size = (secSize * count);
+	offset = (Size_Sector * sector);
+	size = (Size_Sector * count);
 
 	if ((offset + size) > fileSize) {
+		size = fileSize - offset;
+	}
+
+	if (size <= 0) {
 		return -2;
 	}
 		
@@ -66,23 +71,26 @@ int vdisk_readSector(unsigned int sector,  void* buf) {
 	return read(fi, buf, size);
 }
 
-/* reads 8 sectors */
-int vdisk_readSector8(unsigned int sector,  void* buf) {
+/* reads buffer of 4096 bytes */
+int vdisk_readSector4096(unsigned int sector,  void* buf) {
 	int offset;
 	int size;
-        int count = 8;
 
 	if (fi < 0) {
 		return -1;
 	}
 	//printf("read sector:%i \n", sector);
-	offset = (secSize * sector);
-	size = (secSize * count);
+	offset = (Size_Sector * sector);
+	size = 4096;
 
 	if ((offset + size) > fileSize) {
+		size = fileSize - offset;
+	}
+
+	if (size <= 0) {
 		return -2;
 	}
-		
+	
 	lseek(fi, offset, SEEK_SET);
 	return read(fi, buf, size);
 }
