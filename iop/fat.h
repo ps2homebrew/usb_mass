@@ -49,7 +49,7 @@ typedef struct _fat_part {
 
 
 
-/* bios parameter block - bpb */
+/* bios parameter block - bpb - fat12, fat16  */
 typedef struct _fat_raw_bpb {
 	unsigned char jump[3];		//jump instruction ('eb xx 90' or 'e9 xx xx')
 	unsigned char oem[8];		//OEM name and version - e.g. MSDOS5.0
@@ -73,10 +73,50 @@ typedef struct _fat_raw_bpb {
 	unsigned char reserved;		//Current head (not used for this but WinNT stores two flags here).
 	unsigned char signature;	//Signature (must be 28h or 29h to be recognised by NT).
 	unsigned char serialNumber[4]; //The serial number, the serial number is stored in reverse 
-								//order and is the hex representation of the bytes stored here
+					//order and is the hex representation of the bytes stored here
 	unsigned char volumeLabel[11];	//Volume label
 	unsigned char fatId[8];		//File system ID. "FAT12", "FAT16" or "FAT  "
 } fat_raw_bpb;
+
+/* bios parameter block - bpb - fat32 */
+typedef struct _fat32_raw_bpb {
+	unsigned char jump[3];		//jump instruction ('eb xx 90' or 'e9 xx xx')
+	unsigned char oem[8];		//OEM name and version - e.g. MSDOS5.0
+	unsigned char sectorSize[2];	//bytes per sector - should be 512
+	unsigned char clusterSize;	//sectors per cluster - power of two
+	unsigned char resSectors[2];	//reserved sectors - typically 1 (boot sector)
+	unsigned char fatCount;		//number of FATs - must be 2
+	unsigned char rootSize[2];	//number of rootdirectory entries - typically 512
+	unsigned char sectorCountO[2];	//number of sectors (short) - 0, if BIGDOS partition
+	unsigned char mediaDesc;	//media descriptor - typically f8h
+	unsigned char fatSize[2];	//sectors per FAT - varies
+	unsigned char trackSize[2];	//sectors per track
+	unsigned char headCount[2];	//number of heads
+	unsigned char hiddenCountL[2];	//number of hidden sectors (low)
+
+	unsigned char hiddenCountH[2];	//number of hidden sectors (high)
+	unsigned char sectorCount[4];	//number of sectors
+
+	/* fat32 specific */
+	unsigned char fatSize32[4];	//FAT32 sectors per FAT
+	unsigned char fatStatus[2];	//If bit 7 is clear then all FAT's are updated other wise bits 0-3
+					//give the current active FAT, all other bits are reserved.
+	unsigned char revision[2];	//High byte is major revision number, low byte is minor revision number, currently both are 0
+	unsigned char rootDirCluster[4];//Root directory starting cluster
+	unsigned char fsInfoSector[2];	//File system information sector.
+	unsigned char bootSectorCopy[2];//If non-zero this gives the sector which holds a copy of the boot record, usually 6
+	unsigned char reserved1[12];	//Reserved, set to 0.
+	unsigned char pdn;		//Physical drive number (BIOS system ie 80h is first HDD, 00h is first FDD)
+	unsigned char reserved2;	//Reserved
+	unsigned char signature;	//Signature (must be 28h or 29h to be recognised by NT)
+	unsigned char serialNumber[4]; //The serial number, the serial number is stored in reverse 
+					//order and is the hex representation of the bytes stored here
+	unsigned char volumeLabel[11];	//Volume label
+	unsigned char fatId[8];		//File system ID. "FAT12", "FAT16" or "FAT  "
+	unsigned char machineCode[8];	//Machine code
+	unsigned char bootSignature[2];	//Boot Signature AA55h.
+
+} fat32_raw_bpb;
 
 typedef struct _fat_bpb {
 	unsigned int  sectorSize;	//bytes per sector - should be 512
@@ -91,6 +131,8 @@ typedef struct _fat_bpb {
 	unsigned int  sectorCount;	//number of sectors
 	unsigned int  partStart;	//sector where partition starts (boot sector)
 	unsigned int  rootDirStart;	//sector where root directory starts
+	unsigned int  rootDirCluster;	//fat32 - cluster of the root directory
+	unsigned int  activeFat;	//fat32 - current active fat number
 	unsigned char fatType;		//12-FAT16, 16-FAT16, 32-FAT32
 	unsigned char fatId[9];		//File system ID. "FAT12", "FAT16" or "FAT  " - for debug only
 } fat_bpb;

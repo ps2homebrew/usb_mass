@@ -18,20 +18,12 @@
 #include "mass_stor.h"
 #include "fat_driver.h"
 
+//#define DEBUG 1
+#include "debug.h"
+
+
 #define BIND_RPC_ID 0x500C0F1
 
-
-//#define EIO 1001
-//#define EFBIG 1002
-
-
-#define DEBUG 1
-
-#ifdef DEBUG
-#define xprintf printf
-#else
-#define xprintf //
-#endif
 
 /* function declaration */
 void rpcMainThread(void* param);
@@ -109,7 +101,7 @@ void rpcMainThread(void* param)
 
 	SifInitRpc(0);
 
-	xprintf("usb_mass: version 0.1b\n");
+	printf("usb_mass: version 0.2\n");
 
 	mass_stor_init();
 
@@ -121,13 +113,19 @@ void rpcMainThread(void* param)
 	SifRpcLoop(&rpc_queue);
 }
 
-void dumpDiskContent(unsigned int startSector, unsigned int endSector) {
+void dumpDiskContent(unsigned int startSector, unsigned int endSector, char* fname) {
 	unsigned int i;
 	int ret;
-	for (i = startSector; i < endSector; i++) {
+	int fd;
+	unsigned char* buf;
+
+	printf("--- dump start: start sector=%i end sector=%i fd=%i--- \n", startSector, endSector, fd);
+	
+	ret = 1;
+	for (i = startSector; i < endSector && ret > 0; i++) {
 		ret = fat_dumpSector(i);
 	}
-	printf("------------- dump end: start sector=%i end sector=%i-------- \n", startSector, endSector);
+	printf("-- dump end --- \n" );
 	for (i = 0; i < 256; i++) {
 		printf("                                           \n");
 	}
@@ -170,7 +168,7 @@ void *rpcCommandHandler(u32 command, void *buffer, int size)
 			ret = getNext(((char*) buffer) + 4);
 		 	break;
 		case 3: //dumpContent
-			dumpDiskContent(buf[0], buf[1]);
+			dumpDiskContent(buf[0], buf[1], ((char*) buffer) + 8);
 			break;
 		case 4: //dump system info
 			ret = fat_dumpSystemInfo(buf[0], buf[1]);

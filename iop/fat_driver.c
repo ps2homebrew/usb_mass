@@ -90,15 +90,16 @@ int strEqual(unsigned char *s1, unsigned char* s2) {
 unsigned int fat_cluster2sector1216(fat_bpb* bpb, unsigned int cluster) {
 	return  bpb->rootDirStart + (bpb->rootSize / 16)  + (bpb->clusterSize * (cluster-2));
 }
-unsigned int fat_cluster2sector(fat_bpb* bpb, unsigned int cluster) {
-/*
-	switch(bpb->fatType) {
-		case FAT12: return cluster2sector12(bpb, cluster);
-		default:    return cluster2sector1632(bpb, cluster);
-	}
-*/
-	return fat_cluster2sector1216(bpb, cluster);
+unsigned int fat_cluster2sector32(fat_bpb* bpb, unsigned int cluster) {
+	return  bpb->rootDirStart + (bpb->clusterSize * (cluster-2));
+}
 
+unsigned int fat_cluster2sector(fat_bpb* bpb, unsigned int cluster) {
+
+	switch(bpb->fatType) {
+		case FAT32: return fat_cluster2sector32(bpb, cluster);
+		default:    return fat_cluster2sector1216(bpb, cluster);
+	}
 }
 
 void fat_getPartitionRecord(part_raw_record* raw, part_record* rec) {
@@ -150,7 +151,7 @@ int fat_getClusterChain12(fat_bpb* bpb, unsigned int cluster, unsigned int* buf,
 		if (lastFatSector !=  fatSector || sectorSpan) {
 				ret = READ_SECTOR(bpb->partStart + bpb->resSectors + fatSector, sbuf); 
 				if (ret < 0) {
-					printf("FAT driver:Read partition fat12 sector failed! sector=%i! \n", bpb->partStart + bpb->resSectors + fatSector );
+					printf("FAT driver:Read fat12 sector failed! sector=%i! \n", bpb->partStart + bpb->resSectors + fatSector );
 					return -1;
 				}
 				lastFatSector = fatSector;
@@ -160,7 +161,7 @@ int fat_getClusterChain12(fat_bpb* bpb, unsigned int cluster, unsigned int* buf,
 					tbuf[bpb->sectorSize-1] = sbuf[bpb->sectorSize - 1]; 
 					ret = READ_SECTOR(bpb->partStart + bpb->resSectors + fatSector + 1, sbuf); 
 					if (ret < 0) {
-						printf("FAT driver:Read partition fat12 sector failed sector=%i! \n", bpb->partStart + bpb->resSectors + fatSector + 1);
+						printf("FAT driver:Read fat12 sector failed sector=%i! \n", bpb->partStart + bpb->resSectors + fatSector + 1);
 						return -1;
 					}
 					tbuf[bpb->sectorSize ] = sbuf[0]; 
@@ -209,7 +210,7 @@ int fat_getClusterChain16(fat_bpb* bpb, unsigned int cluster, unsigned int* buf,
 		if (lastFatSector !=  fatSector) {
 				ret = READ_SECTOR(bpb->partStart + bpb->resSectors + fatSector,  sbuf); 
 				if (ret < 0) {
-					printf("FAT driver:Read partition fat16 sector failed! sector=%i! \n", bpb->partStart + bpb->resSectors + fatSector );
+					printf("FAT driver:Read fat16 sector failed! sector=%i! \n", bpb->partStart + bpb->resSectors + fatSector );
 					return -1;
 				}
 
@@ -252,17 +253,17 @@ int fat_getClusterChain32(fat_bpb* bpb, unsigned int cluster, unsigned int* buf,
 		if (lastFatSector !=  fatSector) {
 				ret = READ_SECTOR(bpb->partStart + bpb->resSectors + fatSector,  sbuf); 
 				if (ret < 0) {
-					printf("FAT driver: Read partition fat32 sector failed sector=%i! \n", bpb->partStart + bpb->resSectors + fatSector );
+					printf("FAT driver: Read fat32 sector failed sector=%i! \n", bpb->partStart + bpb->resSectors + fatSector );
 					return -1;
 				}
 
 				lastFatSector = fatSector;
 		}
 		cluster = getI32(sbuf + ((cluster % indexCount) * 4));
-		if (cluster >= 0xFFFFFFF8) {
+		if ((cluster & 0xFFFFFFF) >= 0xFFFFFF8) {
 			cont = 0; //continue = false
 		} else {
-			buf[i] = cluster;
+			buf[i] = cluster & 0xFFFFFFF;
 			i++;
 		}
 	}
@@ -307,8 +308,9 @@ void fat_getPartitionTable(fat_part* part) {
 	for (i= 0; i < 4; i++) {
 		part_raw = (part_raw_record*) (sbuf + 0x01BE + (i* 16));
 		fat_getPartitionRecord(part_raw, &part->record[i]);
-		if (part->record[i].sid == 6 || part->record[i].sid == 4) {
-			workPartition = i;			
+		if (part->record[i].sid == 6 || part->record[i].sid == 4 || part->record[i].sid == 1 ||// fat 16, fat 12
+			part->record[i].sid == 0x0B || part->record[i].sid == 0x0C) { // fat 32 
+			workPartition = i;
 		}
 	}
 }
@@ -336,7 +338,8 @@ void fat_determineFatType(fat_bpb* bpb) {
 }
 
 void fat_getPartitionBootSector(part_record* part_rec, fat_bpb* bpb) {
-	fat_raw_bpb* bpb_raw;
+	fat_raw_bpb* bpb_raw; //fat16, fat12
+	fat32_raw_bpb* bpb32_raw; //fat32
 	int ret;
 
 	ret = READ_SECTOR(part_rec->start, sbuf); //read partition boot sector (first sector on partition)
@@ -347,7 +350,9 @@ void fat_getPartitionBootSector(part_record* part_rec, fat_bpb* bpb) {
 	}
 
 	bpb_raw = (fat_raw_bpb*) sbuf;
-	
+	bpb32_raw = (fat32_raw_bpb*) sbuf;
+
+	//set fat common properties
 	bpb->sectorSize	= getI16(bpb_raw->sectorSize);
 	bpb->clusterSize = bpb_raw->clusterSize;
 	bpb->resSectors = getI16(bpb_raw->resSectors);
@@ -367,9 +372,26 @@ void fat_getPartitionBootSector(part_record* part_rec, fat_bpb* bpb) {
 		bpb->fatId[ret] = bpb_raw->fatId[ret];
 	}
 	bpb->fatId[ret] = 0;
+	bpb->rootDirCluster = 0;
 
 	fat_determineFatType(bpb);
 
+	//fat32 specific info
+	if (bpb->fatType == FAT32 && bpb->fatSize == 0) {
+		bpb->fatSize = getI32(bpb32_raw->fatSize32);
+		bpb->activeFat = getI16(bpb32_raw->fatStatus);
+		if (bpb->activeFat & 0x80) { //fat not synced
+			bpb->activeFat = (bpb->activeFat & 0xF);
+		} else {
+			bpb->activeFat = 0;
+		}
+		bpb->rootDirStart = part_rec->start + (bpb->fatCount * bpb->fatSize) + bpb->resSectors;
+		bpb->rootDirCluster = getI32(bpb32_raw->rootDirCluster);
+		for (ret = 0; ret < 8; ret++) {
+			bpb->fatId[ret] = bpb32_raw->fatId[ret];
+		}
+		bpb->fatId[ret] = 0;
+	}
 }
 
 
@@ -490,7 +512,7 @@ void fat_setFatDirChain(fat_bpb* bpb, fat_dir* fatDir) {
 			nextChain = 0;
 		}
 #ifdef DEBUG
-		fat_dumpClusterChain(cbuf, chainSize);
+		fat_dumpClusterChain(cbuf, chainSize, 0);
 #endif
 
 		//process the cluster chain (cbuf)
@@ -582,7 +604,10 @@ int fat_getDirentryStartCluster(fat_bpb* bpb, unsigned char* dirName, unsigned i
 	if (*startCluster == 0 && bpb->fatType < FAT32) { //Root directory
 		startSector = bpb->rootDirStart;
 		dirSector =  bpb->rootSize / (bpb->sectorSize / 32);
-	} else { //other directory
+	} else { //other directory or fat 32
+		if (*startCluster == 0 && bpb->fatType == FAT32) {
+			*startCluster = bpb->rootDirCluster;
+		} 
 		startSector = fat_cluster2sector(bpb, *startCluster);
 		chainSize = fat_getClusterChain(bpb, *startCluster, cbuf, MAX_DIR_CLUSTER, 1);
 		if (chainSize > 0) {
@@ -592,7 +617,7 @@ int fat_getDirentryStartCluster(fat_bpb* bpb, unsigned char* dirName, unsigned i
 			return -1;
 		}
 #ifdef DEBUG
-		fat_dumpClusterChain(cbuf, chainSize);
+		fat_dumpClusterChain(cbuf, chainSize, 0);
 #endif /*debug*/
 	}
 	XPRINTF("dirCluster=%i startSector=%i (%i) dirSector=%i \n", *startCluster, startSector, startSector * 512, dirSector);
@@ -868,11 +893,14 @@ int fat_getNextDirentry(fat_dir* fatDir) {
 		startSector = bpb->rootDirStart;
 		dirSector =  bpb->rootSize / (bpb->sectorSize / 32);
 	} else { //other directory
+		if (dirCluster == 0 && bpb->fatType == FAT32) {
+			dirCluster = bpb->rootDirCluster;
+		} 
 		startSector = fat_cluster2sector(bpb, dirCluster);
 		dirSector = fat_getClusterChain(bpb, dirCluster, cbuf, MAX_DIR_CLUSTER, 1);
 		if (dirSector > 0) {
 #ifdef DEBUG
-			fat_dumpClusterChain(cbuf, dirSector);
+			fat_dumpClusterChain(cbuf, dirSector, 0);
 #endif
 			dirSector *=  bpb->clusterSize;
 		} else {
@@ -1167,6 +1195,10 @@ void fat_dumpPartitionBootSector() {
 	printf("root start sector  = %i \n", bpb->rootDirStart);
 	printf("fat type           = %i \n", bpb->fatType);
 	printf("fat id             = %s \n", bpb->fatId);
+	if (bpb->fatType == FAT32) {
+		printf("root dir cluster   = %i \n", bpb->rootDirCluster);
+		printf("active fat         = %i \n", bpb->activeFat);
+	}
 }
 
 void fat_dumpSectorHex(unsigned char* buf, int bufSize) {
@@ -1224,7 +1256,11 @@ int fat_dumpRootDirSector(int sectorIndex, int sectorCount) {
 	bpb = &partBpb;
 	printf("\n");
 
-	sector = bpb->rootDirStart + sectorIndex;
+	if (bpb->fatType == FAT32) {
+		sector = fat_cluster2sector(bpb, bpb->rootDirCluster);
+	} else {
+		sector = bpb->rootDirStart + sectorIndex;
+	}
 	for (i = 0; i < sectorCount; i++) {
 		ret = READ_SECTOR(sector + i , sbuf); 
 		if (ret < 0) {
@@ -1289,3 +1325,16 @@ int fat_dumpSector(unsigned int sector) {
 	dumpReadData(sbuf, SECTOR_SIZE);
 	return 1;
 }
+
+int fat_readSector(unsigned int sector, unsigned char** buf) {
+	int ret;
+
+	ret = READ_SECTOR(sector, sbuf); 
+	if (ret < 0) {
+		printf("Read sector failed ! sector=%i\n", sector);
+		return -1;
+	}
+	*buf = sbuf;
+	return 1;
+}
+
