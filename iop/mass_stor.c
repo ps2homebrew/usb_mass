@@ -12,7 +12,6 @@
  */
 
 #include <tamtypes.h>
-#include <sifcmd.h>
 #include <sifrpc.h>
 #include <thsemap.h>
 #include <usbd.h>
