@@ -51,6 +51,8 @@ static unsigned int cbuf[MAX_DIR_CLUSTER]; //cluster index buffer
 static unsigned char* sbuf; //sector buffer
 static unsigned char tbuf[SECTOR_SIZE + 4]; //temporary buffer
 
+static int workPartition;
+
 unsigned int  direntryCluster; //the directory cluster requested by getFirstDirentry
 int direntryIndex; //index of the directory children
 
@@ -292,6 +294,7 @@ void fat_getPartitionTable(fat_part* part) {
 	part_raw_record* part_raw;
 	int i;
 	int ret;
+	workPartition = 0;
 
 	ret = READ_SECTOR(0 , sbuf); //read sector 0 - Disk MBR
 
@@ -304,6 +307,9 @@ void fat_getPartitionTable(fat_part* part) {
 	for (i= 0; i < 4; i++) {
 		part_raw = (part_raw_record*) (sbuf + 0x01BE + (i* 16));
 		fat_getPartitionRecord(part_raw, &part->record[i]);
+		if (part->record[i].sid == 6 || part->record[i].sid == 4) {
+			workPartition = i;			
+		}
 	}
 }
 
@@ -958,7 +964,7 @@ int fat_initDriver() {
 		return ret;
 	}
 	fat_getPartitionTable(&partTable);	
-	fat_getPartitionBootSector(&partTable.record[0],  &partBpb);
+	fat_getPartitionBootSector(&partTable.record[workPartition],  &partBpb);
 #ifdef DEBUG
 	fat_dumpPartitionTable();
 	fat_dumpPartitionBootSector();
