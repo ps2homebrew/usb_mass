@@ -1,33 +1,12 @@
 -----------------------------------------------------------------------------
               USB_MASS - the usb mass storage driver for ps2
-               		          ver. 0.2
-
-  --- by Ole --- with the help of ps2dev scene --- for the ps2dev scene ---
+               		          ver. 0.22
 -----------------------------------------------------------------------------
 
-Introduction:
-As I was struggling with the development on ps2, one of the most disappointing
-thing was inability to perform the code on non-development ps2. When the 
-independence exploit was introduced thing gets much better, but some
-restrictions (mostly the media capacity) remained. Existing ps2 file devices
-are imho quite limiting:
-- memory cards: are fine, quiet, but have small capacity and files can be
-  accesed from ps2 only.
-- cdroms: good capcity but noisy and restricted access (toc can't be read
-  without the modchip - personaly I don't want modchip in my machine)
-- harddisks: good capacity and fast but noisy and requires network adapter
-- networked fs: requires connected computer 
-- usb memory device: good capacity, quiet, files can be managed on pc,
-  can be easily plugged in to another ps2, BUT - no device driver on ps2.
-
-And that last missing option forced me to make an attempt to create it.
-The basic idea was to plug the usb bar flash disk into ps2 usb port and
-to be able access stored files from within the ps2 program.
-As it may sounds as easy task to programm such driver the reality was
-different (as allways in such cases :-). Writting of the driver threw
-me into realm of usb devices, scsi command set, fat file system, iop
-programming and lot of specifications that normal person is not able to read
-(or even understand :-). 
+This is the driver for ps2 that supports usb flash drives and other usb
+mass storage devices plugged in the 'black box'.
+The basic idea is to plug the usb bar flash disk into ps2 usb port and
+be able to access stored files from within the homebrew ps2 programs.
 
 Supported hardware:
   - bulk only devices with scsi command set (I hope that most of the recent
@@ -36,6 +15,7 @@ Supported hardware:
     * Seitec Usb Bar (1022_128M sticker) - working
     * SWEEX (FX300010) 6 In 1 multi pannel - first CF slot working
     * ViPowER usb to ide cable (VP-9208 + VP-9054V enclosure) - working
+    * Ne Way MP3 player 256MB
 
 Supported features:
   - fat12, fat16, fat32. First suitable partition is used. 
@@ -77,8 +57,33 @@ Compilation:
 Copy the content to ps2sdk/samples/usb_mass directory and run make 
 in ee and/or iop subdirectory to get example elf and driver irx.
 
-Credits:
-oobles, mrbrown, TyRaNiD, Gustvo Scotti, Jonathan Fox (FAT system guide)
+
+Change log:
+
+ver 0.22
+--------
+Hermes Notes:
+-Added support for different sizes of sector (512 to 4096)
+-Modified scache control and reader to read blocks of 4096 bytes. It use the same memory and run well.
+-Some changes necessary in fat_driver
+-Tested in a 128MB Pendrive with FAT16 and 512bytes per sector (4 sector per cluster)
+-Tested in a Ne Way MP3 player 256MB with FAT16 & FAT32, 2048 bytes per sector (2 sector per cluster)
+
+ver 0.21
+--------
+- ps2sdk compatible
+
+ver 0.2
+-------
+- support for the fat32 filesystem
+
+ver 0.1 
+-------
+-initial version
+
+
+Credits: (alphabetical order :)
+Jonathan Fox (FAT system guide), Hermes, mrbrown, ole, oobles, Gustvo Scotti, TyRaNiD,
 and the ps2dev scene.
 
 Thanks:
