@@ -12,7 +12,6 @@
 
 #include <tamtypes.h>
 #include <thbase.h>
-#include <sifcmd.h>
 #include <sifrpc.h>
 #include <ioman.h>
 #include "mass_stor.h"
