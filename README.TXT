@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
               USB_MASS - the usb mass storage driver for ps2
-               		initial release -  ver. 0.1
+               		          ver. 0.2
 
   --- by Ole --- with the help of ps2dev scene --- for the ps2dev scene ---
 -----------------------------------------------------------------------------
@@ -35,28 +35,25 @@ Supported hardware:
     Tested with:
     * Seitec Usb Bar (1022_128M sticker) - working
     * SWEEX (FX300010) 6 In 1 multi pannel - first CF slot working
-
+    * ViPowER usb to ide cable (VP-9208 + VP-9054V enclosure) - working
 
 Supported features:
-  - fat12 and fat16 on first partition. Flash disks are factory formated 
-    to that state, so unless you are advanced user  (that reformats and
-    repartitions the flash disk to fat32 or ext2 fs ) it should work fine.
-  - basic support for long filenames (err... max 96 chars in the filename)
+  - fat12, fat16, fat32. First suitable partition is used. 
+  - basic support for long filenames (128 chars in the filename)
   - read only access
   - directory listing
 
 
 Missing features:
-  - fat32
-  - multi partition system
+  - multi partition acces
   - write access
   - real unicode decoding and conversion for long filenames
   - only one mass device connected is currently supported
   - file system error detection - if you plug in disk with corrupted
     filesystem then the resluts are unspecified (but as long as the driver
     can only read data it will not modify the disk content).
-  - and much more :-)  Note that this is initial version that was not 
-    properly tested, so you may encounter many bugs.
+  - and much more :-)  Driver is still in development so you may
+    encounter many bugs.
 
 
 How to use:
@@ -80,6 +77,9 @@ usb 1.1 tranfer speed it's not that bad (max is about 700kb/s).
 Credits:
 oobles, mrbrown, TyRaNiD, Gustvo Scotti, Jonathan Fox (FAT system guide)
 and the ps2dev scene.
+
+Thanks:
+to all folks who helped me with testing.
 
 License:
 See the file LICENSE included with this distribution for licensing terms.
