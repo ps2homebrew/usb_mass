@@ -726,7 +726,7 @@ int fat_getDirentryStartCluster(fat_bpb* bpb, unsigned char* dirName, unsigned i
 
 // start cluster should be 0 - if we want to search from root directory
 // otherwise the start cluster should be correct cluster of directory
-// to search directory - set fatDir as NILL
+// to search directory - set fatDir as NULL
 int fat_getFileStartCluster(fat_bpb* bpb, const char* fname, unsigned int* startCluster, fat_dir* fatDir) {
 	unsigned char tmpName[257];
 	int i;
@@ -745,7 +745,8 @@ int fat_getFileStartCluster(fat_bpb* bpb, const char* fname, unsigned int* start
 	for ( ; fname[i] !=0; i++) {
 		if (fname[i] == '/' || fname[i] == '\\') { //directory separator
 			tmpName[offset] = 0; //terminate string
-			ret = fat_getDirentryStartCluster(bpb, tmpName, startCluster, NULL);
+			printf("parse name=%s \n", tmpName);
+			ret = fat_getDirentryStartCluster(bpb, tmpName, startCluster, fatDir);
 			if (ret < 0) {
 				return -ENOENT;
 			}
@@ -757,6 +758,10 @@ int fat_getFileStartCluster(fat_bpb* bpb, const char* fname, unsigned int* start
 	}
 	//and the final file
 	if (fatDir != NULL) {
+		//if the last char of the name was slash - the name was already found -exit
+		if (offset == 0 && i > 1) { 
+			return 1;
+		}
 		tmpName[offset] = 0; //terminate string
 		ret = fat_getDirentryStartCluster(bpb, tmpName, startCluster, fatDir);
 		if (ret < 0) {
@@ -1115,7 +1120,8 @@ int fs_init(iop_device_t *driver) {
 }
 
 int fs_open(iop_file_t* fd, const char *name, int mode, ...) {
-	int index;
+	int index, index2;
+	int mode2;
 	int ret;
 	unsigned int cluster;
 	char escapeNotExist;
@@ -1140,8 +1146,19 @@ int fs_open(iop_file_t* fd, const char *name, int mode, ...) {
 	index = fs_findFreeFileSlot(-1);
 	if (index  < 0) return -EMFILE;
 
-
 #ifdef WRITE_SUPPORT
+	//check if the file is already open
+	index2 = fs_findFileSlotByName(name);
+
+	//file already open
+	if (index2 >= 0) {
+		mode2 = fsRec[index2].mode;
+		if (	(mode  & O_RDWR || mode  & O_WRONLY) || //current file is opened for write
+			(mode2 & O_RDWR || mode2 & O_WRONLY) ) {//other file is opened for write
+			return 	-EACCES;
+		}
+	}
+
 	if (mode & O_RDWR || mode & O_WRONLY) {
 		cluster = 0; //start from root
 
@@ -1320,7 +1337,7 @@ int getNameSignature(const char *name) {
 
 int getMillis() {
 	iop_sys_clock_t clock;
-	int sec, usec;
+	u32 sec, usec;
 
 	GetSystemTime(&clock);
 	SysClock2USec(&clock, &sec, &usec);

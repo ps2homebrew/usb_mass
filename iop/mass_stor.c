@@ -33,6 +33,7 @@
 #define USB_PROTOCOL_MASS_BULK_ONLY	0x50
 
 #define TAG_TEST_UNIT_READY     0
+#define TAG_REQUEST_SENSE	3
 #define TAG_INQUIRY		18
 #define TAG_READ_CAPACITY       37
 #define TAG_READ		40
@@ -128,6 +129,22 @@ void cbw_scsi_test_unit_ready(cbw_packet* packet) {
 	packet->comData[3] = 0;			//reserved
 	packet->comData[4] = 0;			//reserved
 	packet->comData[5] = 0;			//control
+}
+
+void cbw_scsi_request_sense(cbw_packet* packet) {
+	packet->tag = - TAG_REQUEST_SENSE;
+	packet->dataTransferLength = 18	;	//REQUEST_SENSE_REPLY_LENGTH
+	packet->flags = 0x80;			//sense data will flow In
+	packet->comLength = 6;			//scsi command of size 6
+
+	//scsi command packet
+	packet->comData[0] = 0x03;		//request sense operation code
+	packet->comData[1] = 0;			//lun/reserved
+	packet->comData[2] = 0;			//reserved
+	packet->comData[3] = 0;			//reserved
+	packet->comData[4] = 18;		//allocation length
+	packet->comData[5] = 0;			//Control
+
 }
 
 void cbw_scsi_inquiry(cbw_packet* packet) {
@@ -318,6 +335,7 @@ void usb_bulk_clear_halt(mass_dev* dev, int direction) {
 
 	if (direction == 0) {
 		endpoint = dev->bulkEpIAddr;
+		//endpoint = dev->bulkEpI;
 	} else {
 		endpoint = dev->bulkEpOAddr;
 	}
@@ -402,6 +420,7 @@ int usb_bulk_status(mass_dev* dev, csw_packet* csw, int tag) {
 	csw->tag = tag;
 	csw->dataResidue = residue;
 	csw->status = 0;
+
 	ret =  UsbBulkTransfer(
 		dev->bulkEpI,		//bulk input pipe
 		csw,			//data ptr
@@ -435,13 +454,14 @@ int usb_bulk_manage_status(mass_dev* dev, int tag) {
 		ret = usb_bulk_status(dev, &csw, tag); /* Attempt to read CSW from bulk in endpoint */
 		
 	}
-	/* stalled or phase error */
-	if (ret != 0) {
+
+	/* CSW not valid  or stalled or phase error */
+	if (csw.signature !=  0x53425355 || csw.tag != tag || ret != 0) {
 		XPRINTF("...call reset recovery ...\n");
 		usb_bulk_reset(dev, 3);	/* Perform reset recovery */
 	}
 
-	return ret;
+	return 0; //device is ready to process next CBW
 }
 
 
@@ -738,7 +758,9 @@ int mass_stor_probe(int devId) {
 		printf("mass_stor: Error: Couldn't get device descriptor\n");
 		return 0;
 	}
-	//dumpDevice(device);
+#ifdef DEBUG
+	dumpDevice(device);
+#endif
 
 	/* Check if the device has at least one configuration */
 	if(device->bNumConfigurations < 1) {
@@ -769,8 +791,8 @@ int mass_stor_probe(int devId) {
 		(intf->bInterfaceSubClass	!= USB_SUBCLASS_MASS_SCSI  &&
 		 intf->bInterfaceSubClass	!= USB_SUBCLASS_MASS_SFF_8070I) ||
 		(intf->bInterfaceProtocol	!= USB_PROTOCOL_MASS_BULK_ONLY) ||
-		(intf->bNumEndpoints < 1))    { //the bulkIn endpoint should be enough
-		      return 0;
+		(intf->bNumEndpoints < 2))    { //one bulk endpoint is not enough because
+			 return 0;		//we send the CBW to te bulk out endpoint
 	}
 	return 1;
 }
@@ -844,6 +866,24 @@ int mass_stor_connect(int devId) {
 	return 0;
 }
 
+void mass_stor_release() {
+	mass_dev* dev;
+	dev = &mass_device;
+
+	if (dev->bulkEpI >= 0) {
+		UsbCloseEndpoint(dev->bulkEpI);
+	}
+	if (dev->bulkEpO >= 0) {
+		UsbCloseEndpoint(dev->bulkEpO);
+	}
+	dev->devId = -1;
+	dev->bulkEpI = -1;
+	dev->bulkEpO = -1;
+	dev->controlEp = -1;
+	dev->status = DEVICE_DISCONNECTED;
+
+}
+
 int mass_stor_disconnect(int devId) {
 	mass_dev* dev;
 
@@ -851,33 +891,20 @@ int mass_stor_disconnect(int devId) {
 	printf ("usb_mass: disconnect: devId=%i\n", devId);
 
 	if ((dev->status & DEVICE_DETECTED) && devId == dev->devId) {
-		if (dev->bulkEpI >= 0) {
-			UsbCloseEndpoint(dev->bulkEpI);
-		}
-		if (dev->bulkEpO >= 0) {
-			UsbCloseEndpoint(dev->bulkEpO);
-		}
-		dev->devId = -1;
-		dev->bulkEpI = -1;
-		dev->bulkEpO = -1;
-		dev->controlEp = -1;
-		dev->status = DEVICE_DISCONNECTED;
-
-		XPRINTF("usb_mass: disconnect ok.\n");
-		return 0;
+		mass_stor_release();
 	}
-	printf("usb_mass: disconnect failed!\n");
-	return -1;
+	return 0;
 }
 
 
 int mass_stor_warmup() {
 	cbw_packet cbw;
-	unsigned char buffer[512];
+	unsigned char buffer[64];
 	mass_dev* dev;
 	int sectorSize;
 	int stat;
 	int retryCount;
+	int i;
 
 	dev = &mass_device;
 
@@ -887,9 +914,11 @@ int mass_stor_warmup() {
 		return -1;
 	}
 
+
 	initCBWPacket(&cbw);
 
 	//send inquiry command
+	memset(buffer, 0, 64);
 	cbw_scsi_inquiry(&cbw);
 	XPRINTF("-INQUIRY\n");
 	usb_bulk_command(dev, &cbw);
@@ -898,11 +927,16 @@ int mass_stor_warmup() {
 	usb_bulk_transfer(dev->bulkEpI, buffer, 36);
 
 	XPRINTF("-INQUIRY STATUS\n");
+	residue = 0;
 	usb_bulk_manage_status(dev, -TAG_INQUIRY);
 
 #ifdef DEBUG
 	dumpInquiry(buffer);
 #endif
+	if (returnSize <= 0) {
+		printf("!Error: device not ready!\n");
+		return -1;
+	} 
 
 	//send start stop command
 	cbw_scsi_start_stop_unit(&cbw);
@@ -921,14 +955,12 @@ int mass_stor_warmup() {
 	XPRINTF("-TUR STATUS\n");
 	usb_bulk_manage_status(dev, -TAG_TEST_UNIT_READY);
 
-
 	//send read capacity command
 	cbw_scsi_read_capacity(&cbw); //prepare scsi command block
 
 	stat = 1;
 	retryCount = 6;
 	while (stat != 0 && retryCount > 0) {
-
 		XPRINTF("-READ CAPACITY COMMAND\n");
 		usb_bulk_command(dev, &cbw);
 
@@ -945,7 +977,7 @@ int mass_stor_warmup() {
 	}
 	// Added by Hermes
 	Size_Sector=getBI32(&buffer[4]);
-	printf("PHYSICAL SECTOR SIZE: 0x%x\n",Size_Sector);
+//	printf("PHYSICAL SECTOR SIZE: 0x%x\n",Size_Sector);
 
 #ifdef DEBUG
 	dumpReadCapacity(buffer);	
@@ -955,6 +987,7 @@ int mass_stor_warmup() {
 }
 
 int mass_stor_getStatus() {
+	int i;
 	XPRINTF("mass_stor: getting status... \n");
 	if (!(mass_device.status & DEVICE_DETECTED)) {
 		XPRINTF("usb_mass: Error - no mass storage device found!\n");
@@ -963,8 +996,14 @@ int mass_stor_getStatus() {
 	if (!(mass_device.status & DEVICE_CONFIGURED)) {
 		//usb_bulk_reset(&mass_device, 1);
 		set_configuration(&mass_device, mass_device.configId);
+		//printf("set configuration return code=%d \n", returnCode);
+		//for (i = 0; i < 0xFFFFF; i++) asm("nop\nnop\nnop\nnop");	
 		mass_device.status += DEVICE_CONFIGURED;
-		mass_stor_warmup();
+		i= mass_stor_warmup();
+		if (i < 0) {
+			mass_stor_release();
+			return i;
+		}
 	}
 	return mass_device.status;
 }

@@ -14,9 +14,11 @@ Supported hardware:
     Tested with:
     * Seitec Usb Bar (1022_128M sticker) - working
     * SWEEX (FX300010) 6 In 1 multi pannel - first CF slot working
-    * ViPowER usb to ide cable (VP-9208 + VP-9054V enclosure) - working
+    * ViPowER usb to ide cable (VP-9208 + VP-9054V HDD enclosure) - working
     * Ne Way MP3 player 256MB
     * MSI Mega Stick 511 (128MB, MP3 player) - working
+    * iMex-A2U2 external HDD enclosure - working (in case the disk/driver
+      behaves inreliably - use supplied power cable)
 
 Supported features:
   - fat12, fat16, fat32. First suitable partition is used. 
