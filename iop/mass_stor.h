@@ -8,5 +8,4 @@ int mass_stor_probe(int devId);
 int mass_stor_readSector4096(unsigned int sector, unsigned char* buffer);
 int mass_stor_writeSector4096(unsigned int sector, unsigned char* buffer);
 
-//void mass_stor_setDisconnectProc(int (*x)(void));
 #endif

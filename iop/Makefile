@@ -15,7 +15,7 @@ IOP_OBJS += fat_write.o
 endif
 
 ifdef COMPILE_DUMPS
-IOP_CFLAGS += -COMPILE_DUMPS
+IOP_CFLAGS += -DCOMPILE_DUMPS
 endif
 
 all: $(IOP_BIN)

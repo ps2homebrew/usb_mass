@@ -110,7 +110,7 @@ void rpcMainThread(void* param)
 
 	SifInitRpc(0);
 
-	printf("usb_mass: version 0.30");
+	printf("usb_mass: version 0.31");
 #ifdef WRITE_SUPPORT
 	printf(" wr - experimental! Use at your own risk!\n");
 #else

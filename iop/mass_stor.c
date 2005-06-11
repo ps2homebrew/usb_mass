@@ -6,6 +6,8 @@
  * (C) 2004, Marek Olejnik (ole00@post.cz)
  * (C) 2004  Hermes (support for sector sizes from 512 to 4096 bytes)
  *
+ * Other contributors and testers: Bigboss, Sincro, Spooo, BraveDog.
+ * 
  * This module handles the setup and manipulation of USB mass storage devices
  * on the PS2
  *
@@ -959,6 +961,22 @@ int mass_stor_warmup() {
 	XPRINTF("-TUR STATUS\n");
 	usb_bulk_manage_status(dev, -TAG_TEST_UNIT_READY);
 */
+
+	//send "request sense" command
+	//required for correct operation of some devices
+	//discovered and reported by BraveDog
+	cbw_scsi_request_sense(&cbw); //prepare scsi command block
+
+	XPRINTF("-REQUEST SENSE COMMAND\n");
+	usb_bulk_command(dev, &cbw);
+
+	XPRINTF("-RS DATA\n");
+	usb_bulk_transfer(dev->bulkEpI, buffer, 18);
+
+	XPRINTF("-RS STATUS\n");
+	stat = usb_bulk_manage_status(dev, -TAG_REQUEST_SENSE);
+
+
 	//send read capacity command
 	cbw_scsi_read_capacity(&cbw); //prepare scsi command block
 

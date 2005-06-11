@@ -25,7 +25,7 @@
 #define FAT_MAX_PATH 1024
 #define FAT_MAX_NAME 128
 
-#define DIR_CHAIN_SIZE 10
+#define DIR_CHAIN_SIZE 32
 
 typedef struct _part_raw_record {
 	unsigned char	active;		//Set to 80h if this partition is active / bootable
