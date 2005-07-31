@@ -46,11 +46,15 @@
 #define DEVICE_CONFIGURED	2
 #define DEVICE_DISCONNECTED 4
 
+#define MASS_CONNECT_CALLBACK    0x0012
+#define MASS_DISCONNECT_CALLBACK 0x0013
+
 // Added by Hermes 
 int getBI32(unsigned char* buf) {
 	return (buf[3]  + (buf[2] <<8) + (buf[1] << 16) + (buf[0] << 24));
 }
 unsigned Size_Sector=512; // store size of sector from usb mass
+unsigned g_MaxLBA;
 
 
 typedef struct _mass_dev
@@ -800,6 +804,16 @@ int mass_stor_probe(int devId) {
 	return 1;
 }
 
+static int sif_send_cmd ( int anID, int anArg ) {  // from audsrv
+
+ static int lCmdData[ 4 ] __attribute__(   (  aligned( 64 )  )   );
+
+ lCmdData[ 3 ] = anArg;
+
+ return sceSifSendCmd ( anID, lCmdData, 16, NULL, NULL, 0 );
+
+}  /* end sif_send_cmd */
+
 int mass_stor_connect(int devId) {
 	int i;
 	int epCount;
@@ -869,6 +883,8 @@ int mass_stor_connect(int devId) {
 	dev->status += DEVICE_DETECTED;
 	printf("usb_mass: connect ok: epI=%i, epO=%i \n", dev->bulkEpI, dev->bulkEpO);
 
+      sif_send_cmd ( MASS_CONNECT_CALLBACK, 0 );
+
 	return 0;
 }
 
@@ -898,6 +914,7 @@ int mass_stor_disconnect(int devId) {
 
 	if ((dev->status & DEVICE_DETECTED) && devId == dev->devId) {
 		mass_stor_release();
+            sif_send_cmd ( MASS_DISCONNECT_CALLBACK, 0 );
 	}
 	return 0;
 }
@@ -1007,8 +1024,10 @@ int mass_stor_warmup() {
 		return 1;
 	}
 	// Added by Hermes
-	Size_Sector=getBI32(&buffer[4]);
+	Size_Sector = getBI32 ( &buffer[ 4 ] );
+    g_MaxLBA    = getBI32 ( &buffer[ 0 ] );
 //	printf("PHYSICAL SECTOR SIZE: 0x%x\n",Size_Sector);
+//    printf("MAX LBA: 0x%X\n", g_MaxLBA );
 
 #ifdef DEBUG
 	dumpReadCapacity(buffer);	

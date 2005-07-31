@@ -27,7 +27,6 @@
 
 #define BIND_RPC_ID 0x500C0F1
 
-
 /* function declaration */
 void rpcMainThread(void* param);
 void *rpcCommandHandler(u32 command, void *buffer, int size);
@@ -110,7 +109,7 @@ void rpcMainThread(void* param)
 
 	SifInitRpc(0);
 
-	printf("usb_mass: version 0.31");
+	printf("usb_mass: version 0.32");
 #ifdef WRITE_SUPPORT
 	printf(" wr - experimental! Use at your own risk!\n");
 #else

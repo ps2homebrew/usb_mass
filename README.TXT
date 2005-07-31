@@ -60,6 +60,10 @@ in ee and/or iop subdirectory to get example elf and driver irx.
 
 Change log:
 
+ver 0.32 (EEUG)
+--------
+- Handle devices without partition table (floppy-like)
+
 ver 0.31
 --------
 - Compatibility improvement in warmup stage by BraveDog

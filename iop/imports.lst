@@ -63,7 +63,8 @@ sifcmd_IMPORTS_start
 I_sceSifInitRpc 
 I_sceSifSetRpcQueue 
 I_sceSifRegisterRpc 
-I_sceSifRpcLoop 
+I_sceSifRpcLoop
+I_sceSifSendCmd
 sifcmd_IMPORTS_end
 
 usbd_IMPORTS_start
