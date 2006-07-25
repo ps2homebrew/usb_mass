@@ -18,6 +18,7 @@
 
 int fi;		//input file 
 int fileSize;	//virtual disk size (given in bytes)
+unsigned g_MaxLBA; /* Size of disk */ 
 
 unsigned Size_Sector=512; // 
 
@@ -29,7 +30,11 @@ initialze virtual disk - the param is the filename
 int vdisk_init(char * param, int sectorSize) {
 	Size_Sector = sectorSize;
 	printf ("Accessing file : %s \n", param);
+#if defined (__CYGWIN__) || defined (__MINGW32__)
 	fi = open(param, O_RDWR | O_BINARY , S_IWUSR);
+#else
+	fi = open(param, O_RDWR, S_IWUSR);
+#endif
 
 	if (fi >=0) {
 		fileSize = lseek(fi, 0, SEEK_END);
@@ -37,6 +42,7 @@ int vdisk_init(char * param, int sectorSize) {
 	} else {
 		fileSize = 0;
 	}
+    g_MaxLBA = fileSize / Size_Sector; 
 	return fi;
 }
 

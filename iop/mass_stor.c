@@ -7,7 +7,7 @@
  * (C) 2004  Hermes (support for sector sizes from 512 to 4096 bytes)
  *
  * Other contributors and testers: Bigboss, Sincro, Spooo, BraveDog.
- * 
+ *
  * This module handles the setup and manipulation of USB mass storage devices
  * on the PS2
  *
@@ -49,7 +49,7 @@
 #define MASS_CONNECT_CALLBACK    0x0012
 #define MASS_DISCONNECT_CALLBACK 0x0013
 
-// Added by Hermes 
+// Added by Hermes
 int getBI32(unsigned char* buf) {
 	return (buf[3]  + (buf[2] <<8) + (buf[1] << 16) + (buf[0] << 24));
 }
@@ -84,7 +84,7 @@ typedef struct _read_info {
 } read_info;
 
 typedef struct _cbw_packet {
-	unsigned int signature; 
+	unsigned int signature;
 	unsigned int tag;
 	unsigned int dataTransferLength;
 	unsigned char flags;
@@ -97,7 +97,7 @@ typedef struct _csw_packet {
 	unsigned int signature;
 	unsigned int tag;
 	unsigned int dataResidue;
-	unsigned char status;	
+	unsigned char status;
 } csw_packet;
 
 //void usb_bulk_read1(int resultCode, int bytes, void* arg);
@@ -113,16 +113,16 @@ static int returnCode;
 static int returnSize;
 static int residue;
 
-mass_dev mass_device;		//current device 
+mass_dev mass_device;		//current device
 
 void initCBWPacket(cbw_packet* packet) {
-	packet->signature = 0x43425355; 
-	packet->flags = 0x80; //80->data in,  00->out 
+	packet->signature = 0x43425355;
+	packet->flags = 0x80; //80->data in,  00->out
 	packet->lun = 0;
 }
 
 void initCSWPacket(csw_packet* packet) {
-	packet->signature = 0x53425355; 
+	packet->signature = 0x53425355;
 }
 void cbw_scsi_test_unit_ready(cbw_packet* packet) {
 	packet->tag = TAG_TEST_UNIT_READY;
@@ -207,7 +207,7 @@ void cbw_scsi_read_capacity(cbw_packet* packet) {
 
 void cbw_scsi_read_sector(cbw_packet* packet, int lba, int sectorSize, int sectorCount) {
 	packet->tag = - TAG_READ;
-	packet->dataTransferLength = sectorSize	 * sectorCount;	
+	packet->dataTransferLength = sectorSize	 * sectorCount;
 	packet->flags = 0x80;			//read data will flow In
 	packet->comLength = 10;			//scsi command of size 10
 
@@ -220,13 +220,13 @@ void cbw_scsi_read_sector(cbw_packet* packet, int lba, int sectorSize, int secto
 	packet->comData[5] = (lba & 0xFF);		//lba 4 (LSB)
 	packet->comData[6] = 0;			//Reserved
 	packet->comData[7] = (sectorCount & 0xFF00) >> 8;	//Transfer length MSB
-	packet->comData[8] = (sectorCount & 0xFF);			//Transfer length LSB 
+	packet->comData[8] = (sectorCount & 0xFF);			//Transfer length LSB
 	packet->comData[9] = 0;			//control
 }
 
 void cbw_scsi_write_sector(cbw_packet* packet, int lba, int sectorSize, int sectorCount) {
 	packet->tag = -TAG_WRITE;
-	packet->dataTransferLength = sectorSize	 * sectorCount;	
+	packet->dataTransferLength = sectorSize	 * sectorCount;
 	packet->flags = 0x00;			//write data will flow Out
 	packet->comLength = 10;			//scsi command of size 10
 
@@ -239,7 +239,7 @@ void cbw_scsi_write_sector(cbw_packet* packet, int lba, int sectorSize, int sect
 	packet->comData[5] = (lba & 0xFF);		//lba 4 (LSB)
 	packet->comData[6] = 0;			//Reserved
 	packet->comData[7] = (sectorCount & 0xFF00) >> 8;	//Transfer length MSB
-	packet->comData[8] = (sectorCount & 0xFF);			//Transfer length LSB 
+	packet->comData[8] = (sectorCount & 0xFF);			//Transfer length LSB
 	packet->comData[9] = 0;			//control
 }
 
@@ -352,7 +352,7 @@ void usb_bulk_clear_halt(mass_dev* dev, int direction) {
 		dev->controlEp, 		//Config pipe
 		0,			//HALT feature
 		endpoint,
-		usb_callback, 
+		usb_callback,
 		(void*)semh
 		);
 
@@ -385,10 +385,10 @@ void usb_bulk_reset(mass_dev* dev, int mode) {
 		0x21,			//bulk reset
 		0xFF,
 		0,
-		0,			//interface number  FIXME - correct number
+		dev->interfaceNumber, //interface number
 		0,			//length
 		NULL,			//data
-		usb_callback, 
+		usb_callback,
 		(void*) semh
 		);
 
@@ -454,21 +454,26 @@ int usb_bulk_manage_status(mass_dev* dev, int tag) {
 
 	XPRINTF("...waiting for status 1 ...\n");
 	ret = usb_bulk_status(dev, &csw, tag); /* Attempt to read CSW from bulk in endpoint */
-	if (ret == 4 || ret < 0) { /* STALL bulk in  -OR- Bulk error */
+    if (ret == USB_RC_STALL || ret < 0) { /* STALL bulk in  -OR- Bulk error */
 		usb_bulk_clear_halt(dev, 0); /* clear the stall condition for bulk in */
-		
+
 		XPRINTF("...waiting for status 2 ...\n");
 		ret = usb_bulk_status(dev, &csw, tag); /* Attempt to read CSW from bulk in endpoint */
-		
+
 	}
 
 	/* CSW not valid  or stalled or phase error */
-	if (csw.signature !=  0x53425355 || csw.tag != tag || ret != 0) {
+	if (csw.signature !=  0x53425355 || csw.tag != tag) {
 		XPRINTF("...call reset recovery ...\n");
 		usb_bulk_reset(dev, 3);	/* Perform reset recovery */
 	}
 
-	return 0; //device is ready to process next CBW
+   if (ret != 0) {
+      XPRINTF("Mass storage device not ready!\n");
+      return 1; //device is not ready, need to retry!
+   } else {
+      return 0; //device is ready to process next CBW
+   }
 }
 
 
@@ -519,7 +524,7 @@ int usb_bulk_transfer(int pipe, void* buffer, int transferSize) {
 	while (transferSize > 0) {
 		if (transferSize < blockSize) {
 			blockSize = transferSize;
-		}	
+		}
 
 		ret =  UsbBulkTransfer(
 			pipe,		//bulk pipe epI(Read)  epO(Write)
@@ -572,7 +577,7 @@ void dumpConfig(UsbConfigDescriptor* data) {
 	printf("config value=0x%02X\n", data->bConfigurationValue);
 	printf("index configuration=0x%02X\n", data->iConfiguration);
 	printf("attributes=0x%02X\n", data->bmAttributes);
-	printf("max power=0x%02X\n", data->MaxPower);
+	printf("max power=0x%02X\n", data->maxPower);
 
 }
 
@@ -593,10 +598,10 @@ void dumpEndpoint(UsbEndpointDescriptor* data, int i) {
 	printf("\n");
 	printf("ENDPOINT info %i\n",i);
 	printf("--------------\n");
-	printf("address=0x%02X\n", data->bEndpointAddress);	
-	printf("attribs=0x%02X\n", data->bmAttributes);	
-	printf("maxPacketsize=0x%02X%02X\n", data->wMaxPacketSizeHB, data->wMaxPacketSizeLB);	
-	printf("interval=0x%02X\n", data->bInterval);	
+	printf("address=0x%02X\n", data->bEndpointAddress);
+	printf("attribs=0x%02X\n", data->bmAttributes);
+	printf("maxPacketsize=0x%02X%02X\n", data->wMaxPacketSizeHB, data->wMaxPacketSizeLB);
+	printf("interval=0x%02X\n", data->bInterval);
 }
 
 
@@ -648,7 +653,7 @@ int mass_stor_readSector1(unsigned int sector, unsigned char* buffer) {
 
 	dev = &mass_device;
 
-	// assume device is detected and configured - should be checked in upper levels 
+	// assume device is detected and configured - should be checked in upper levels
 
 	initCBWPacket(&cbw);
 
@@ -689,12 +694,12 @@ int mass_stor_readSector4096(unsigned int sector, unsigned char* buffer) {
 		usb_bulk_command(&mass_device, &cbw);
 
 		XPRINTF("-READ SECTOR DATA\n");
-		stat = usb_bulk_transfer(mass_device.bulkEpI, buffer, 4096); //Modified by Hermes 
+		stat = usb_bulk_transfer(mass_device.bulkEpI, buffer, 4096); //Modified by Hermes
 
        	XPRINTF("-READ SECTOR STATUS\n");
 		stat = usb_bulk_manage_status(&mass_device, -TAG_READ);
 	}
-	return 4096; //Modified by Hermes 
+	return 4096; //Modified by Hermes
 }
 
 /* write sector group - up to 4096 bytes */
@@ -708,7 +713,7 @@ int mass_stor_writeSector4096(unsigned int sector, unsigned char* buffer) {
 	initCBWPacket(&cbw);
 	sectorSize = Size_Sector;
 
-	cbw_scsi_write_sector(&cbw, sector, sectorSize, 4096/sectorSize);  
+	cbw_scsi_write_sector(&cbw, sector, sectorSize, 4096/sectorSize);
 
 	stat = 1;
 	while (stat != 0) {
@@ -716,29 +721,29 @@ int mass_stor_writeSector4096(unsigned int sector, unsigned char* buffer) {
 		usb_bulk_command(&mass_device, &cbw);
 
 		XPRINTF("-WRITE SECTOR DATA\n");
-		stat = usb_bulk_transfer(mass_device.bulkEpO, buffer, 4096); 
+		stat = usb_bulk_transfer(mass_device.bulkEpO, buffer, 4096);
 
        	XPRINTF("-READ SECTOR STATUS\n");
 		stat = usb_bulk_manage_status(&mass_device, -TAG_WRITE);
 	}
-	return 4096; 
+	return 4096;
 }
 
 
-/* test that endpoint is bulk endpoint and if so, update device info */ 
+/* test that endpoint is bulk endpoint and if so, update device info */
 void usb_bulk_probeEndpoint(mass_dev* dev, UsbEndpointDescriptor* endpoint) {
 	if (endpoint->bmAttributes == USB_ENDPOINT_XFER_BULK) {
 		/* out transfer */
 		if ((endpoint->bEndpointAddress & 0x80) == 0 && dev->bulkEpO < 0) {
 			dev->bulkEpOAddr = endpoint->bEndpointAddress;
-			dev->bulkEpO = UsbOpenBulkEndpoint(dev->devId, endpoint);
+			dev->bulkEpO = UsbOpenEndpointAligned(dev->devId, endpoint);
 			dev->packetSzO = endpoint->wMaxPacketSizeHB * 256 + endpoint->wMaxPacketSizeLB;
 			XPRINTF("register Output endpoint id =%i addr=%02X packetSize=%i\n", dev->bulkEpO,dev->bulkEpOAddr, dev->packetSzO);
 		}else
 		/* in transfer */
 		if ((endpoint->bEndpointAddress & 0x80) != 0 && dev->bulkEpI < 0) {
 			dev->bulkEpIAddr = endpoint->bEndpointAddress;
-			dev->bulkEpI = UsbOpenBulkEndpoint(dev->devId, endpoint);
+			dev->bulkEpI = UsbOpenEndpointAligned(dev->devId, endpoint);
 			dev->packetSzI = endpoint->wMaxPacketSizeHB * 256 + endpoint->wMaxPacketSizeLB;
 			XPRINTF("register Intput endpoint id =%i addr=%02X packetSize=%i\n", dev->bulkEpI, dev->bulkEpIAddr, dev->packetSzI);
 		}
@@ -749,7 +754,7 @@ void usb_bulk_probeEndpoint(mass_dev* dev, UsbEndpointDescriptor* endpoint) {
 
 
 int mass_stor_probe(int devId) {
-	UsbDeviceDescriptor *device = NULL;        
+	UsbDeviceDescriptor *device = NULL;
 	UsbConfigDescriptor *config = NULL;
 	UsbInterfaceDescriptor *intf = NULL;
 
@@ -780,7 +785,7 @@ int mass_stor_probe(int devId) {
 	      return 0;
 	}
 	/* check that at least one interface exists */
-	if(	(config->bNumInterfaces < 1) || 
+	if(	(config->bNumInterfaces < 1) ||
 		(config->wTotalLength < (sizeof(UsbConfigDescriptor) + sizeof(UsbInterfaceDescriptor)))) {
 		      printf("mass_stor: Error: No interfaces available\n");
 		      return 0;
@@ -789,9 +794,9 @@ int mass_stor_probe(int devId) {
 	intf = (UsbInterfaceDescriptor *) ((char *) config + config->bLength); /* Get first interface */
 	//dumpInterface(intf);
 	/*
-	XPRINTF("Interface Length %d Endpoints %d Class %d Sub %d Proto %d\n", intf->bLength, 
-	 intf->bNumEndpoints, intf->bInterfaceClass, intf->bInterfaceSubClass, 
-	 intf->bInterfaceProtocol); 
+	XPRINTF("Interface Length %d Endpoints %d Class %d Sub %d Proto %d\n", intf->bLength,
+	 intf->bNumEndpoints, intf->bInterfaceClass, intf->bInterfaceSubClass,
+	 intf->bInterfaceProtocol);
 	*/
 
 	if(	(intf->bInterfaceClass		!= USB_CLASS_MASS_STORAGE) ||
@@ -817,16 +822,16 @@ static int sif_send_cmd ( int anID, int anArg ) {  // from audsrv
 int mass_stor_connect(int devId) {
 	int i;
 	int epCount;
-	UsbDeviceDescriptor *device;        
+	UsbDeviceDescriptor *device;
 	UsbConfigDescriptor *config;
 	UsbInterfaceDescriptor *interface;
 	UsbEndpointDescriptor *endpoint;
 	u16 number;
 	mass_dev* dev;
-	
+
 	printf ("usb_mass: connect: devId=%i\n", devId);
 	dev = &mass_device;
-	
+
 	/* only one mass device allowed */
 	if (dev->status & DEVICE_DETECTED) {
 		printf("usb_mass: Error - only one mass storage device allowed !\n");
@@ -840,7 +845,7 @@ int mass_stor_connect(int devId) {
 
 	/* open the config endpoint */
 	dev->controlEp = UsbOpenEndpoint(devId, NULL);
-	
+
 	device = (UsbDeviceDescriptor*)UsbGetDeviceStaticDescriptor(devId, NULL, USB_DT_DEVICE);
 
 	config = (UsbConfigDescriptor*)UsbGetDeviceStaticDescriptor(devId, device, USB_DT_CONFIG);
@@ -853,7 +858,7 @@ int mass_stor_connect(int devId) {
 	epCount = interface->bNumEndpoints;
 	endpoint = (UsbEndpointDescriptor*) UsbGetDeviceStaticDescriptor(devId, NULL, USB_DT_ENDPOINT);
 	usb_bulk_probeEndpoint(dev, endpoint);
-	
+
 	for (i = 1; i < epCount; i++) {
 		endpoint = (UsbEndpointDescriptor*) ((char *) endpoint + endpoint->bLength);
 		usb_bulk_probeEndpoint(dev, endpoint);
@@ -871,10 +876,10 @@ int mass_stor_connect(int devId) {
 		return -1;
 	}
 
-	/* 
-		no usb commands (other than getDeviceDescriptor) can be called 
-		in this connection state or else the callback function is never 
-		called (usbd feature or bug?). So we have to confirm this 
+	/*
+		no usb commands (other than getDeviceDescriptor) can be called
+		in this connection state or else the callback function is never
+		called (usbd feature or bug?). So we have to confirm this
 		connection (return 0) and then we are free to call any usbd functions.
 	*/
 
@@ -959,8 +964,8 @@ int mass_stor_warmup() {
 	if (returnSize <= 0) {
 		printf("!Error: device not ready!\n");
 		return -1;
-	} 
-/*
+	}
+
 	//send start stop command
 	cbw_scsi_start_stop_unit(&cbw);
 	XPRINTF("-START COMMAND\n");
@@ -970,14 +975,13 @@ int mass_stor_warmup() {
 	usb_bulk_manage_status(dev, -TAG_START_STOP_UNIT);
 
 
-	//send test unit ready command
-	cbw_scsi_test_unit_ready(&cbw);
-	XPRINTF("-TUR COMMAND\n");
-	usb_bulk_command(dev, &cbw);
-
-	XPRINTF("-TUR STATUS\n");
-	usb_bulk_manage_status(dev, -TAG_TEST_UNIT_READY);
-*/
+    do {
+       //send test unit ready command
+       cbw_scsi_test_unit_ready(&cbw);
+       XPRINTF("-TUR COMMAND\n");
+       usb_bulk_command(dev, &cbw); 
+	   XPRINTF("-TUR STATUS\n");
+    } while(usb_bulk_manage_status(dev, -TAG_TEST_UNIT_READY) != 0); 
 
 	//send "request sense" command
 	//required for correct operation of some devices
@@ -1007,10 +1011,11 @@ int mass_stor_warmup() {
 		usb_bulk_transfer(dev->bulkEpI, buffer, 8);
 
 		//HACK HACK HACK !!!
-		//according to usb doc we should allways 
+		//according to usb doc we should allways
 		//attempt to read the CSW packet. But in some cases
 		//reading of CSW packet just freeze ps2....:-(
-		if (returnCode == 4) {
+        if (returnCode == USB_RC_STALL) {
+            XPRINTF("call reset recovery ...\n"); 
 			usb_bulk_reset(dev, 1);
 		} else {
 
@@ -1030,7 +1035,7 @@ int mass_stor_warmup() {
 //    printf("MAX LBA: 0x%X\n", g_MaxLBA );
 
 #ifdef DEBUG
-	dumpReadCapacity(buffer);	
+	dumpReadCapacity(buffer);
 #endif
 	return 0;
 
@@ -1047,7 +1052,7 @@ int mass_stor_getStatus() {
 		//usb_bulk_reset(&mass_device, 1);
 		set_configuration(&mass_device, mass_device.configId);
 		//maybe this wait is not necessary, but who knows....
-		for (i = 0; i < 0xFFFFF; i++) asm("nop\nnop\nnop\nnop");	
+		for (i = 0; i < 0xFFFFF; i++) asm("nop\nnop\nnop\nnop");
 		set_interface(&mass_device, mass_device.interfaceNumber, mass_device.interfaceAlt);
 		mass_device.status += DEVICE_CONFIGURED;
 		i= mass_stor_warmup();
@@ -1064,9 +1069,9 @@ int mass_stor_init() {
 	mass_device.status = 0;
 
 	driver.next 		= NULL;
-	driver.prev		= NULL;	
+	driver.prev		= NULL;
 	driver.name 		= "mass-stor";
-	driver.probe 		= mass_stor_probe; 
+	driver.probe 		= mass_stor_probe;
 	driver.connect		= mass_stor_connect;
 	driver.disconnect	= mass_stor_disconnect;
 

@@ -1,29 +1,33 @@
-CC=d:/gcc/bin/g++
-CFLAGS= -s
+CC=gcc
+CFLAGS=-g3 -I../iop
 
 #uncomment to enable write support
 WRITE_SUPPORT=1
 
-
-OBJECTS1=fat_test.o fat_driver.o scache.o vdisk.o
-OBJECTS2=obj/fat_test.o obj/fat_driver.o obj/scache.o obj/vdisk.o 
+OBJECTS=fat_test.o fat_driver.o scache.o vdisk.o
 
 ifdef WRITE_SUPPORT
 CFLAGS += -DWRITE_SUPPORT
-OBJECTS1 += fat_write.o
-OBJECTS2 += obj/fat_write.o 
+OBJECTS += fat_write.o
 endif
 
-
-ALL: fat_test.exe 
+all: fat_test.exe
 
 clean:
-	rm obj/*.o
+   rm -f *.o
 
-fat_test.exe: $(OBJECTS1)
-	$(CC) $(CFLAGS) -ofat_test.exe $(OBJECTS2)
+fat_test: $(OBJECTS)
+   $(CC) $(CFLAGS) -o $@ $^
 
 
-.c.o:
-	$(CC) $(CFLAGS) -c $(<) -o obj/$*.o
+%.o: %.c
+   $(CC) $(CFLAGS) -c $^ -o $@
 
+fat_driver.c: ../iop/fat_driver.c
+   ln -s $^ $@
+
+scache.c: ../iop/scache.c
+   ln -s $^ $@
+
+fat_write.c: ../iop/fat_write.c
+   ln -s $^ $@

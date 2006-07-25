@@ -105,7 +105,11 @@ void copyFile(char*  fname, char* oname) {
 	bufSize = 4096;
 
 	fd = fs_open(&file, fname, O_RDONLY);
+#if defined (__CYGWIN__) || defined (__MINGW32__)
 	fo = open(oname, O_RDWR | O_TRUNC | O_CREAT | O_BINARY, S_IWUSR | S_IRUSR); 
+#else
+	fo = open(oname, O_RDWR | O_TRUNC | O_CREAT, S_IWUSR | S_IRUSR); 
+#endif
 	if (fd >=0 && fo >=0) {
 		size = fs_lseek(&file, 0, SEEK_END);
 		printf("file: %s size: %i \n", fname, size);
@@ -300,7 +304,12 @@ void writeFile(char* fname, char* iname) {
 	bufSize = 4096;
 
 	fd = fs_open(&file, fname, O_RDWR | O_CREAT | O_TRUNC );
-	fi = open(iname, O_RDONLY | O_BINARY , S_IWUSR | S_IRUSR); 
+#if defined (__CYGWIN__) || defined (__MINGW32__)
+	fi = open(iname, O_RDONLY | O_BINARY, S_IWUSR | S_IRUSR); 
+#else
+	fi = open(iname, O_RDONLY, S_IWUSR | S_IRUSR); 
+#endif
+
 	if (fd >=0 && fi >=0) {
 		size = lseek(fi, 0, SEEK_END);
 		printf("file: %s size: %i \n", iname, size);

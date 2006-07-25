@@ -88,7 +88,7 @@ int _start( int argc, char **argv)
 	param.attr         = TH_C;
 	param.thread     = rpcMainThread;
 	param.priority = 40;
-	param.stacksize    = 0x800;
+	param.stacksize    = 0x8000;
 	param.option      = 0;
 
 
