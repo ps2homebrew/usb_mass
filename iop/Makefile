@@ -4,7 +4,7 @@ IOP_LDFLAGS = -Wl,-s
 IOP_CFLAGS = -D_PS2_
 
 #uncomment to enable write support
-#WRITE_SUPPORT=1
+WRITE_SUPPORT=1
 
 #uncomment to compile in dump/info functions
 #COMPILE_DUMPS=1

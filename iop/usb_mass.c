@@ -12,6 +12,7 @@
 
 #include <tamtypes.h>
 #include <thbase.h>
+#include <thsemap.h>
 #include <sifrpc.h>
 #include <ioman.h>
 
@@ -74,12 +75,19 @@ void initFsDriver() {
 
 }
 
+extern int driver_ready_sema;
 
 int _start( int argc, char **argv)
 {
 	iop_thread_t param;
 	int th;
+	iop_sema_t s;
 
+	s.initial = 0;
+	s.max = 1;
+	s.option = 0;
+	s.attr = 0;
+	driver_ready_sema = CreateSema(&s);
 
 	FlushDcache();
 	initFsDriver();
@@ -109,19 +117,19 @@ void rpcMainThread(void* param)
 
 	SifInitRpc(0);
 
-	printf("usb_mass: version 0.32");
+	printf("usb_mass: version 0.40");
 #ifdef WRITE_SUPPORT
 	printf(" wr - experimental! Use at your own risk!\n");
 #else
 	printf(" ro\n"); //read only 
 #endif
 
-	mass_stor_init();
-
 	tid = GetThreadId();
 
 	SifSetRpcQueue(&rpc_queue, tid);
 	SifRegisterRpc(&rpc_server, BIND_RPC_ID, (void *) rpcCommandHandler, (u8 *) &_rpc_buffer, 0, 0, &rpc_queue);
+
+    SignalSema(driver_ready_sema);
 
 	SifRpcLoop(&rpc_queue);
 }
@@ -207,7 +215,6 @@ void overwriteDiskContentFile(unsigned int startSector, unsigned int endSector, 
 /* WRITE_SUPPORT */
 #endif 
 }
-
 
 int getFirst(void* buf) {
 	fat_dir fatDir;

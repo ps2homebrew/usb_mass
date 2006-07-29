@@ -885,7 +885,7 @@ int mass_stor_connect(int devId) {
 
 	/*store current configuration id - can't call set_configuration here */
 	dev->configId = config->bConfigurationValue;
-	dev->status += DEVICE_DETECTED;
+	dev->status |= DEVICE_DETECTED;
 	printf("usb_mass: connect ok: epI=%i, epO=%i \n", dev->bulkEpI, dev->bulkEpO);
 
       sif_send_cmd ( MASS_CONNECT_CALLBACK, 0 );
@@ -979,9 +979,9 @@ int mass_stor_warmup() {
        //send test unit ready command
        cbw_scsi_test_unit_ready(&cbw);
        XPRINTF("-TUR COMMAND\n");
-       usb_bulk_command(dev, &cbw); 
+       usb_bulk_command(dev, &cbw);
 	   XPRINTF("-TUR STATUS\n");
-    } while(usb_bulk_manage_status(dev, -TAG_TEST_UNIT_READY) != 0); 
+    } while(usb_bulk_manage_status(dev, -TAG_TEST_UNIT_READY) != 0);
 
 	//send "request sense" command
 	//required for correct operation of some devices
@@ -1015,7 +1015,7 @@ int mass_stor_warmup() {
 		//attempt to read the CSW packet. But in some cases
 		//reading of CSW packet just freeze ps2....:-(
         if (returnCode == USB_RC_STALL) {
-            XPRINTF("call reset recovery ...\n"); 
+            XPRINTF("call reset recovery ...\n");
 			usb_bulk_reset(dev, 1);
 		} else {
 
@@ -1041,26 +1041,49 @@ int mass_stor_warmup() {
 
 }
 
-int mass_stor_getStatus() {
+int driver_ready_sema = 0;
+int driver_ready = 0;
+
+int mass_stor_getStatus()
+{
 	int i;
+
+    // wait for the USB driver to be operational.
+	if(!driver_ready)
+	{
+	    WaitSema(driver_ready_sema);
+	    DeleteSema(driver_ready_sema);
+	    driver_ready = 1;
+	}
+
 	XPRINTF("mass_stor: getting status... \n");
-	if (!(mass_device.status & DEVICE_DETECTED)) {
+
+    // give the USB driver some time to detect the device
+    i = 1000;
+	while(!(mass_device.status & DEVICE_DETECTED) && (--i > 0)) DelayThread(1000);
+
+    // fail if the device is still not detected.
+	if (!(mass_device.status & DEVICE_DETECTED))
+	{
 		XPRINTF("usb_mass: Error - no mass storage device found!\n");
 		return -1;
 	}
-	if (!(mass_device.status & DEVICE_CONFIGURED)) {
+
+	if (!(mass_device.status & DEVICE_CONFIGURED))
+	{
 		//usb_bulk_reset(&mass_device, 1);
 		set_configuration(&mass_device, mass_device.configId);
 		//maybe this wait is not necessary, but who knows....
-		for (i = 0; i < 0xFFFFF; i++) asm("nop\nnop\nnop\nnop");
+		//for (i = 0; i < 0xFFFFF; i++) asm("nop\nnop\nnop\nnop");
 		set_interface(&mass_device, mass_device.interfaceNumber, mass_device.interfaceAlt);
-		mass_device.status += DEVICE_CONFIGURED;
+		mass_device.status |= DEVICE_CONFIGURED;
 		i= mass_stor_warmup();
 		if (i < 0) {
 			mass_stor_release();
 			return i;
 		}
 	}
+
 	return mass_device.status;
 }
 
@@ -1069,7 +1092,7 @@ int mass_stor_init() {
 	mass_device.status = 0;
 
 	driver.next 		= NULL;
-	driver.prev		= NULL;
+	driver.prev		    = NULL;
 	driver.name 		= "mass-stor";
 	driver.probe 		= mass_stor_probe;
 	driver.connect		= mass_stor_connect;
