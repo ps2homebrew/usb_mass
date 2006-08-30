@@ -181,7 +181,7 @@ void cbw_scsi_start_stop_unit(cbw_packet* packet) {
 	packet->comData[1] = 1;			//lun/reserved/immed
 	packet->comData[2] = 0;			//reserved
 	packet->comData[3] = 0;			//reserved
-	packet->comData[4] = 3;			//reserved/LoEj/Start (load and stard)
+	packet->comData[4] = 1;			//reserved/LoEj/Start (load and stard)
 	packet->comData[5] = 0;			//control
 }
 
