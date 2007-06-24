@@ -64,7 +64,7 @@ int fs_dummy(void);
 */
 
 int fs_init   (iop_device_t *driver); 
-int fs_open   (iop_file_t* , const char *name, int mode, ...);
+int fs_open   (iop_file_t* , const char *name, int mode);
 int fs_lseek  (iop_file_t* , unsigned long offset, int whence);
 int fs_read   (iop_file_t* , void * buffer, int size );
 int fs_write  (iop_file_t* , void * buffer, int size );
@@ -72,17 +72,17 @@ int fs_close  (iop_file_t* );
 int fs_dummy  (void);
 
 int fs_deinit (iop_device_t *);
-int fs_format (iop_file_t *, ...);
+int fs_format (iop_file_t *);
 int fs_ioctl  (iop_file_t *, unsigned long, void *);
 int fs_remove (iop_file_t *, const char *);
 int fs_mkdir  (iop_file_t *, const char *);
 int fs_rmdir  (iop_file_t *, const char *);
 int fs_dopen  (iop_file_t *, const char *);
 int fs_dclose (iop_file_t *);
-int fs_dread  (iop_file_t *, void *);
-int fs_getstat(iop_file_t *, const char *, void *);
+int fs_dread  (iop_file_t *, fio_dirent_t *);
+int fs_getstat(iop_file_t *, const char *, fio_stat_t *);
 
-int fs_chstat (iop_file_t *, const char *, void *, unsigned int);
+int fs_chstat (iop_file_t *, const char *, fio_stat_t *, unsigned int);
 
 
 int getI32(unsigned char* buf);
