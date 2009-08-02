@@ -14,7 +14,7 @@ endif
 all: fat_test.exe
 
 clean:
-   rm -f *.o
+	rm -f *.o
 
 fat_test: $(OBJECTS)
    $(CC) $(CFLAGS) -o $@ $^
