@@ -49,6 +49,8 @@
 #define MASS_CONNECT_CALLBACK    0x0012
 #define MASS_DISCONNECT_CALLBACK 0x0013
 
+#define CSW_PHASE_ERROR 0x02
+
 // Added by Hermes
 int getBI32(unsigned char* buf) {
 	return (buf[3]  + (buf[2] <<8) + (buf[1] << 16) + (buf[0] << 24));
@@ -438,13 +440,13 @@ int usb_bulk_status(mass_dev* dev, csw_packet* csw, int tag) {
 	if(ret != USB_RC_OK) {
 		XPRINTF("Usb: Error sending csw bulk command\n");
 		DeleteSema(semh);
-		return -1;
+		return ret;
 	}else {
 		WaitSema(semh);
 	}
 	DeleteSema(semh);
 	XPRINTF("Usb: bulk csw.status: %i\n", csw->status);
-	return csw->status;
+	return ret;
 }
 
 /* see flow chart in the usbmassbulk_10.pdf doc (page 15) */
@@ -454,26 +456,22 @@ int usb_bulk_manage_status(mass_dev* dev, int tag) {
 
 	XPRINTF("...waiting for status 1 ...\n");
 	ret = usb_bulk_status(dev, &csw, tag); /* Attempt to read CSW from bulk in endpoint */
-    if (ret == USB_RC_STALL || ret < 0) { /* STALL bulk in  -OR- Bulk error */
+    if (ret != USB_RC_OK) { /* STALL bulk in  -OR- Bulk error */
 		usb_bulk_clear_halt(dev, 0); /* clear the stall condition for bulk in */
 
 		XPRINTF("...waiting for status 2 ...\n");
 		ret = usb_bulk_status(dev, &csw, tag); /* Attempt to read CSW from bulk in endpoint */
-
 	}
 
-	/* CSW not valid  or stalled or phase error */
-	if (csw.signature !=  0x53425355 || csw.tag != tag) {
+    	/* stalled or bulk error or phase error or CSW not valid */
+    if ((ret != USB_RC_OK)
+	|| (csw.status == CSW_PHASE_ERROR) || (csw.signature !=  0x53425355) || (csw.tag != tag)) {
 		XPRINTF("...call reset recovery ...\n");
 		usb_bulk_reset(dev, 3);	/* Perform reset recovery */
-	}
 
-   if (ret != 0) {
-      XPRINTF("Mass storage device not ready!\n");
-      return 1; //device is not ready, need to retry!
-   } else {
-      return 0; //device is ready to process next CBW
-   }
+    }
+    XPRINTF("... process next CBW ...\n");
+    return 0; //device is ready to process next CBW
 }
 
 
